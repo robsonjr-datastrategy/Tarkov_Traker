@@ -188,9 +188,18 @@
 
   function render() {
     const visibleItems = state.items.filter(matchesCurrentView);
-    const sharedItems = visibleItems.filter((item) => item.requiredForQuest && item.requiredForHideout);
-    const questItems = visibleItems.filter((item) => item.requiredForQuest && !item.requiredForHideout);
-    const hideoutItems = visibleItems.filter((item) => item.requiredForHideout && !item.requiredForQuest);
+    const sharedItems = visibleItems.filter((item) => {
+      const usages = getContextUsages(item);
+      return hasUsageType(usages, "quest") && hasUsageType(usages, "hideout");
+    });
+    const questItems = visibleItems.filter((item) => {
+      const usages = getContextUsages(item);
+      return hasUsageType(usages, "quest") && !hasUsageType(usages, "hideout");
+    });
+    const hideoutItems = visibleItems.filter((item) => {
+      const usages = getContextUsages(item);
+      return hasUsageType(usages, "hideout") && !hasUsageType(usages, "quest");
+    });
 
     renderSummary(visibleItems);
     renderSection(elements.sharedGrid, elements.sharedSection, sharedItems);
@@ -202,15 +211,17 @@
   }
 
   function renderSummary(summaryItems) {
-    const totalRequired = sumUsages(summaryItems);
-    const totalCollected = summaryItems.reduce((sum, item) => sum + getCollected(item), 0);
+    const totalRequired = sumContextUsages(summaryItems);
+    const totalCollected = summaryItems.reduce((sum, item) => {
+      return sum + Math.min(getCollected(item), sumItemUsages(getContextUsages(item)));
+    }, 0);
     const totalRemaining = totalRequired - totalCollected;
     const percent = totalRequired === 0 ? 0 : Math.round((totalCollected / totalRequired) * 100);
-    const questRequired = sumUsages(summaryItems, (use) => use.type === "quest");
-    const hideoutRequired = sumUsages(summaryItems, (use) => use.type === "hideout");
-    const kappaRequired = sumUsages(summaryItems, (use) => use.requiredForKappa);
+    const questRequired = sumContextUsages(summaryItems, (use) => use.type === "quest");
+    const hideoutRequired = sumContextUsages(summaryItems, (use) => use.type === "hideout");
+    const kappaRequired = sumContextUsages(summaryItems, (use) => use.requiredForKappa);
     const firRemaining = summaryItems.reduce((sum, item) => {
-      const firRequired = item.usages
+      const firRequired = getContextUsages(item)
         .filter((use) => use.foundInRaid)
         .reduce((usageSum, usage) => usageSum + Number(usage.quantity || 0), 0);
       return sum + Math.max(firRequired - getCollected(item), 0);
@@ -237,9 +248,22 @@
     }, 0);
   }
 
+  function sumContextUsages(items, predicate) {
+    return items.reduce((sum, item) => {
+      const usages = getContextUsages(item);
+      const relevantUsages = predicate ? usages.filter(predicate) : usages;
+      return sum + sumItemUsages(relevantUsages);
+    }, 0);
+  }
+
+  function sumItemUsages(usages) {
+    return usages.reduce((sum, usage) => sum + Number(usage.quantity || 0), 0);
+  }
+
   function matchesCurrentView(item) {
     const collected = getCollected(item);
-    const isComplete = collected >= item.totalRequired;
+    const contextRequired = sumItemUsages(getContextUsages(item));
+    const isComplete = contextRequired > 0 && Math.min(collected, contextRequired) >= contextRequired;
     const searchTarget = [
       item.name,
       item.shortName,
@@ -254,7 +278,8 @@
     const matchesSearch = !state.search || searchTarget.includes(state.search);
 
     if (!matchesSearch) return false;
-    return Array.from(state.filters).every((filter) => matchesFilter(item, filter, isComplete));
+    if (hasActiveUsageFilters() && contextRequired === 0) return false;
+    return Array.from(state.filters).every((filter) => matchesItemStateFilter(filter, isComplete));
   }
 
   function handleFilterClick(filter, isMultiSelect) {
@@ -287,19 +312,47 @@
     });
   }
 
-  function matchesFilter(item, filter, isComplete) {
+  function matchesItemStateFilter(filter, isComplete) {
     if (filter === "all") return true;
     if (filter === "pending") return !isComplete;
     if (filter === "complete") return isComplete;
-    if (filter === "quest") return item.requiredForQuest;
-    if (filter === "hideout") return item.requiredForHideout;
-    if (filter === "kappa") return item.requiredForKappa;
-    if (filter === "non-kappa") {
-      return item.usages.some((use) => use.type === "quest" && !use.requiredForKappa);
-    }
-    if (filter === "fir") return item.foundInRaidRequired;
-    if (filter === "non-fir") return !item.foundInRaidRequired;
     return true;
+  }
+
+  function hasActiveUsageFilters() {
+    return Array.from(state.filters).some((filter) => {
+      return ["quest", "hideout", "kappa", "non-kappa", "fir", "non-fir"].includes(filter);
+    });
+  }
+
+  function getContextUsages(item) {
+    const usages = Array.isArray(item.usages) ? item.usages : [];
+    const selectedFilters = Array.from(state.filters);
+    const typeFilters = selectedFilters.filter((filter) => filter === "quest" || filter === "hideout");
+    const kappaFilters = selectedFilters.filter((filter) => filter === "kappa" || filter === "non-kappa");
+    const firFilters = selectedFilters.filter((filter) => filter === "fir" || filter === "non-fir");
+
+    if (state.filters.has("all") || (typeFilters.length === 0 && kappaFilters.length === 0 && firFilters.length === 0)) {
+      return usages;
+    }
+
+    return usages.filter((usage) => {
+      const matchesType = typeFilters.length === 0 || typeFilters.includes(usage.type);
+      const matchesKappa = kappaFilters.length === 0 || kappaFilters.some((filter) => {
+        if (filter === "kappa") return Boolean(usage.requiredForKappa);
+        return usage.type === "quest" && !usage.requiredForKappa;
+      });
+      const matchesFir = firFilters.length === 0 || firFilters.some((filter) => {
+        if (filter === "fir") return Boolean(usage.foundInRaid);
+        return !usage.foundInRaid;
+      });
+
+      return matchesType && matchesKappa && matchesFir;
+    });
+  }
+
+  function hasUsageType(usages, type) {
+    return usages.some((usage) => usage.type === type);
   }
 
   function renderSection(grid, section, sectionItems) {
@@ -310,8 +363,11 @@
 
   function createCard(item) {
     const collected = getCollected(item);
-    const remaining = item.totalRequired - collected;
-    const complete = collected >= item.totalRequired;
+    const contextUsages = getContextUsages(item);
+    const contextRequired = sumItemUsages(contextUsages);
+    const contextCollected = Math.min(collected, contextRequired);
+    const remaining = contextRequired - contextCollected;
+    const complete = contextRequired > 0 && contextCollected >= contextRequired;
     const card = document.createElement("article");
 
     card.className = `item-card ${complete ? "complete" : "pending"}`;
@@ -336,16 +392,16 @@
       <div class="card-counter">
         <button class="counter-button" type="button" data-action="decrease" aria-label="Diminuir" ${collected <= 0 ? "disabled" : ""}>-</button>
         <div class="counter-value">
-          <strong>${collected}/${item.totalRequired}</strong>
+          <strong>${contextCollected}/${contextRequired}</strong>
           <span>${remaining} restante${remaining === 1 ? "" : "s"}</span>
         </div>
         <button class="counter-button" type="button" data-action="increase" aria-label="Aumentar" ${collected >= item.totalRequired ? "disabled" : ""}>+</button>
       </div>
       <div class="meta-row">
-        <span>Total necessário: ${item.totalRequired}</span>
-        <span>${item.usages.length} uso${item.usages.length === 1 ? "" : "s"}</span>
+        <span>Total no filtro: ${contextRequired}</span>
+        <span>${contextUsages.length} uso${contextUsages.length === 1 ? "" : "s"}</span>
       </div>
-      <button class="usage-button" type="button" data-action="open-usages">Ver usos (${item.usages.length})</button>
+      <button class="usage-button" type="button" data-action="open-usages">Ver usos (${contextUsages.length})</button>
     `;
 
     card.addEventListener("click", (event) => {
@@ -362,15 +418,16 @@
     });
 
     card.querySelector('[data-action="open-usages"]').addEventListener("click", () => {
-      openUsageModal(item);
+      openUsageModal(item, contextUsages);
     });
 
     return card;
   }
 
-  function openUsageModal(item) {
+  function openUsageModal(item, usages) {
+    const contextUsages = usages && usages.length > 0 ? usages : getContextUsages(item);
     elements.usageModalTitle.textContent = item.name;
-    elements.modalUsageList.innerHTML = item.usages.map(renderUse).join("");
+    elements.modalUsageList.innerHTML = contextUsages.map(renderUse).join("");
 
     if (item.icon) {
       elements.modalItemIcon.src = item.icon;
