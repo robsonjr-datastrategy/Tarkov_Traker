@@ -187,13 +187,12 @@
   }
 
   function render() {
-    renderSummary();
-
     const visibleItems = state.items.filter(matchesCurrentView);
     const sharedItems = visibleItems.filter((item) => item.requiredForQuest && item.requiredForHideout);
     const questItems = visibleItems.filter((item) => item.requiredForQuest && !item.requiredForHideout);
     const hideoutItems = visibleItems.filter((item) => item.requiredForHideout && !item.requiredForQuest);
 
+    renderSummary(visibleItems);
     renderSection(elements.sharedGrid, elements.sharedSection, sharedItems);
     renderSection(elements.questGrid, elements.questSection, questItems);
     renderSection(elements.hideoutGrid, elements.hideoutSection, hideoutItems);
@@ -202,15 +201,15 @@
     elements.emptyState.hidden = visibleItems.length > 0;
   }
 
-  function renderSummary() {
-    const totalRequired = sumUsages(state.items);
-    const totalCollected = state.items.reduce((sum, item) => sum + getCollected(item), 0);
+  function renderSummary(summaryItems) {
+    const totalRequired = sumUsages(summaryItems);
+    const totalCollected = summaryItems.reduce((sum, item) => sum + getCollected(item), 0);
     const totalRemaining = totalRequired - totalCollected;
     const percent = totalRequired === 0 ? 0 : Math.round((totalCollected / totalRequired) * 100);
-    const questRequired = sumUsages(state.items, (use) => use.type === "quest");
-    const hideoutRequired = sumUsages(state.items, (use) => use.type === "hideout");
-    const kappaRequired = sumUsages(state.items, (use) => use.requiredForKappa);
-    const firRemaining = state.items.reduce((sum, item) => {
+    const questRequired = sumUsages(summaryItems, (use) => use.type === "quest");
+    const hideoutRequired = sumUsages(summaryItems, (use) => use.type === "hideout");
+    const kappaRequired = sumUsages(summaryItems, (use) => use.requiredForKappa);
+    const firRemaining = summaryItems.reduce((sum, item) => {
       const firRequired = item.usages
         .filter((use) => use.foundInRaid)
         .reduce((usageSum, usage) => usageSum + Number(usage.quantity || 0), 0);
