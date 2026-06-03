@@ -1,18 +1,22 @@
 (function () {
   const STORAGE_KEY = "tarkovFirTrackerProgress";
   const BASE_CACHE_KEY = "tarkovFirTrackerBase";
-  const BASE_DATA_VERSION = 6;
+  const BASE_DATA_VERSION = 7;
 
   const state = {
     items: [],
     quests: [],
+    hideoutUpgrades: [],
     progress: {},
     filters: new Set(["all"]),
     currentView: "items",
     questFilters: new Set(["all"]),
+    hideoutFilters: new Set(["all"]),
     search: "",
     questSearch: "",
     questTrader: "all",
+    hideoutSearch: "",
+    hideoutStation: "all",
     loading: false
   };
 
@@ -30,6 +34,7 @@
     dataSource: document.getElementById("dataSource"),
     itemsView: document.getElementById("itemsView"),
     questsView: document.getElementById("questsView"),
+    hideoutView: document.getElementById("hideoutView"),
     tabButtons: document.querySelectorAll(".tab-button"),
     searchInput: document.getElementById("searchInput"),
     filterButtons: document.querySelectorAll(".filter-button"),
@@ -40,6 +45,13 @@
     questProgressSummary: document.getElementById("questProgressSummary"),
     questCardsGrid: document.getElementById("questCardsGrid"),
     questEmptyState: document.getElementById("questEmptyState"),
+    hideoutSearchInput: document.getElementById("hideoutSearchInput"),
+    hideoutFilterButtons: document.querySelectorAll(".hideout-filter-button"),
+    hideoutStationFilter: document.getElementById("hideoutStationFilter"),
+    hideoutVisibleCount: document.getElementById("hideoutVisibleCount"),
+    hideoutProgressSummary: document.getElementById("hideoutProgressSummary"),
+    hideoutCardsGrid: document.getElementById("hideoutCardsGrid"),
+    hideoutEmptyState: document.getElementById("hideoutEmptyState"),
     visibleCount: document.getElementById("visibleCount"),
     saveState: document.getElementById("saveState"),
     refreshBaseBtn: document.getElementById("refreshBaseBtn"),
@@ -70,19 +82,24 @@
     const cached = loadCachedBase();
     const fallback = normalizeLoadedItems(window.TARKOV_ITEMS || []);
     const fallbackQuests = normalizeLoadedQuests(window.TARKOV_QUESTS || []);
+    const fallbackHideoutUpgrades = normalizeLoadedHideoutUpgrades(window.TARKOV_HIDEOUT_UPGRADES || []);
 
     if (cached.length > 0) {
       state.items = cached;
       state.quests = normalizeLoadedQuests(loadCachedQuests());
+      state.hideoutUpgrades = normalizeLoadedHideoutUpgrades(loadCachedHideoutUpgrades());
       elements.dataSource.textContent = `Base salva no navegador carregada (${cached.length} itens).`;
       populateTraderFilter();
+      populateHideoutStationFilter();
       return;
     }
 
     state.items = fallback;
     state.quests = fallbackQuests;
+    state.hideoutUpgrades = fallbackHideoutUpgrades;
     elements.dataSource.textContent = `Base local carregada (${fallback.length} itens).`;
     populateTraderFilter();
+    populateHideoutStationFilter();
   }
 
   function loadCachedBase() {
@@ -105,29 +122,197 @@
     }
   }
 
-  function cacheBase(items, quests) {
+  function loadCachedHideoutUpgrades() {
+    try {
+      const cached = JSON.parse(localStorage.getItem(BASE_CACHE_KEY));
+      if (!cached || cached.version !== BASE_DATA_VERSION) return [];
+      return Array.isArray(cached.hideoutUpgrades) ? cached.hideoutUpgrades : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function cacheBase(items, quests, hideoutUpgrades) {
     localStorage.setItem(BASE_CACHE_KEY, JSON.stringify({
       version: BASE_DATA_VERSION,
       savedAt: new Date().toISOString(),
       items,
-      quests
+      quests,
+      hideoutUpgrades
     }));
   }
 
   function normalizeLoadedItems(items) {
-    return items.map((item) => ({
-      ...item,
-      collected: 0,
-      remaining: item.totalRequired,
-      usages: Array.isArray(item.usages) ? item.usages : []
-    })).sort((a, b) => a.name.localeCompare(b.name));
+    return items.map((item) => {
+      const usages = condenseLoadedUsages(Array.isArray(item.usages) ? item.usages : []);
+      const totalRequired = usages.reduce((sum, usage) => sum + Number(usage.quantity || 0), 0);
+
+      return {
+        ...item,
+        totalRequired,
+        collected: 0,
+        remaining: totalRequired,
+        requiredForQuest: usages.some((usage) => usage.type === "quest"),
+        requiredForHideout: usages.some((usage) => usage.type === "hideout"),
+        requiredForKappa: usages.some((usage) => usage.requiredForKappa),
+        foundInRaidRequired: usages.some((usage) => usage.foundInRaid),
+        usages
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name));
   }
 
   function normalizeLoadedQuests(quests) {
     return quests.map((quest) => ({
       ...quest,
-      requiredItems: Array.isArray(quest.requiredItems) ? quest.requiredItems : []
+      requiredItems: condenseLoadedRequiredItems(Array.isArray(quest.requiredItems) ? quest.requiredItems : [])
     })).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function normalizeLoadedHideoutUpgrades(upgrades) {
+    return upgrades.map((upgrade) => ({
+      ...upgrade,
+      requiredItems: Array.isArray(upgrade.requiredItems) ? upgrade.requiredItems : []
+    })).sort((a, b) => {
+      const stationOrder = a.stationName.localeCompare(b.stationName);
+      return stationOrder === 0 ? a.level - b.level : stationOrder;
+    });
+  }
+
+  function condenseLoadedUsages(usages) {
+    const questUsages = condenseLoadedQuestUsages(usages.filter((usage) => usage.type === "quest"));
+    const hideoutUsages = condenseLoadedHideoutUsages(usages.filter((usage) => usage.type === "hideout"));
+    return questUsages.concat(hideoutUsages);
+  }
+
+  function condenseLoadedQuestUsages(usages) {
+    const byQuestId = new Map();
+
+    usages.forEach((usage) => {
+      const key = usage.questId || `${usage.questName}|${usage.trader}`;
+      byQuestId.set(key, [...(byQuestId.get(key) || []), usage]);
+    });
+
+    const withoutFindHandPairs = [];
+
+    byQuestId.forEach((questUsages) => {
+      const groupedByItemState = new Map();
+
+      questUsages.forEach((usage) => {
+        const key = [
+          usage.itemId || "",
+          usage.questId || "",
+          usage.questName || "",
+          usage.trader || "",
+          Boolean(usage.foundInRaid),
+          Boolean(usage.requiredForKappa)
+        ].join("|");
+        groupedByItemState.set(key, [...(groupedByItemState.get(key) || []), usage]);
+      });
+
+      groupedByItemState.forEach((sameItemUsages) => {
+        if (hasLoadedFindAndHandOverPair(sameItemUsages)) {
+          withoutFindHandPairs.push(preferLoadedHandOverUsage(sameItemUsages));
+          return;
+        }
+
+        withoutFindHandPairs.push(...sameItemUsages);
+      });
+    });
+
+    return condenseLoadedDuplicateQuestVariants(withoutFindHandPairs);
+  }
+
+  function hasLoadedFindAndHandOverPair(usages) {
+    return usages.length > 1
+      && usages.some((usage) => isLoadedFindObjective(usage.objectiveDescription || usage.description))
+      && usages.some((usage) => isLoadedHandOverObjective(usage.objectiveDescription || usage.description));
+  }
+
+  function preferLoadedHandOverUsage(usages) {
+    const preferred = usages.find((usage) => isLoadedHandOverObjective(usage.objectiveDescription || usage.description)) || usages[0];
+    const quantity = Math.max(...usages.map((usage) => Number(usage.quantity || 0)));
+    return {
+      ...preferred,
+      quantity
+    };
+  }
+
+  function condenseLoadedDuplicateQuestVariants(usages) {
+    const grouped = new Map();
+
+    usages.forEach((usage) => {
+      const key = [
+        usage.itemId || "",
+        usage.questName || "",
+        usage.trader || "",
+        normalizeLoadedObjectiveDescription(usage.objectiveDescription || usage.description),
+        Boolean(usage.foundInRaid),
+        Boolean(usage.requiredForKappa)
+      ].join("|");
+      const existing = grouped.get(key);
+
+      if (!existing || Number(usage.quantity || 0) > Number(existing.quantity || 0)) {
+        grouped.set(key, usage);
+      }
+    });
+
+    return Array.from(grouped.values());
+  }
+
+  function condenseLoadedHideoutUsages(usages) {
+    const grouped = new Map();
+
+    usages.forEach((usage) => {
+      const key = [
+        usage.stationId || usage.stationName || "",
+        Number(usage.level) || 0
+      ].join("|");
+      const existing = grouped.get(key);
+
+      if (existing) {
+        existing.quantity = Math.max(Number(existing.quantity || 0), Number(usage.quantity || 0));
+        return;
+      }
+
+      grouped.set(key, { ...usage });
+    });
+
+    return Array.from(grouped.values());
+  }
+
+  function condenseLoadedRequiredItems(items) {
+    const asUsages = items.map((item) => ({
+      ...item,
+      type: "quest",
+      itemId: item.itemId,
+      objectiveDescription: item.description
+    }));
+
+    return condenseLoadedQuestUsages(asUsages).map((usage) => ({
+      objectiveId: usage.objectiveId,
+      description: usage.description || usage.objectiveDescription || "",
+      itemId: usage.itemId,
+      name: usage.name,
+      shortName: usage.shortName,
+      icon: usage.icon,
+      wikiLink: usage.wikiLink,
+      quantity: usage.quantity,
+      foundInRaid: usage.foundInRaid,
+      alternativeItems: usage.alternativeItems
+    }));
+  }
+
+  function isLoadedFindObjective(description) {
+    const text = normalizeLoadedObjectiveDescription(description);
+    return text.startsWith("find ") || text.startsWith("locate ") || text.startsWith("obtain ");
+  }
+
+  function isLoadedHandOverObjective(description) {
+    return normalizeLoadedObjectiveDescription(description).startsWith("hand over ");
+  }
+
+  function normalizeLoadedObjectiveDescription(description) {
+    return String(description || "").trim().toLowerCase().replace(/\s+/g, " ");
   }
 
   function bindEvents() {
@@ -145,6 +330,11 @@
       render();
     });
 
+    elements.hideoutSearchInput.addEventListener("input", (event) => {
+      state.hideoutSearch = event.target.value.trim().toLowerCase();
+      render();
+    });
+
     elements.filterButtons.forEach((button) => {
       button.addEventListener("click", (event) => handleFilterClick(button.dataset.filter, event.ctrlKey || event.metaKey));
     });
@@ -153,8 +343,17 @@
       button.addEventListener("click", (event) => handleQuestFilterClick(button.dataset.questFilter, event.ctrlKey || event.metaKey));
     });
 
+    elements.hideoutFilterButtons.forEach((button) => {
+      button.addEventListener("click", (event) => handleHideoutFilterClick(button.dataset.hideoutFilter, event.ctrlKey || event.metaKey));
+    });
+
     elements.questTraderFilter.addEventListener("change", (event) => {
       state.questTrader = event.target.value;
+      render();
+    });
+
+    elements.hideoutStationFilter.addEventListener("change", (event) => {
+      state.hideoutStation = event.target.value;
       render();
     });
 
@@ -185,20 +384,23 @@
     if (!saved || typeof saved !== "object") {
       return {
         manualProgress: {},
-        questProgress: {}
+        questProgress: {},
+        hideoutProgress: {}
       };
     }
 
-    if (saved.manualProgress || saved.questProgress) {
+    if (saved.manualProgress || saved.questProgress || saved.hideoutProgress) {
       return {
         manualProgress: saved.manualProgress && typeof saved.manualProgress === "object" ? saved.manualProgress : {},
-        questProgress: saved.questProgress && typeof saved.questProgress === "object" ? saved.questProgress : {}
+        questProgress: saved.questProgress && typeof saved.questProgress === "object" ? saved.questProgress : {},
+        hideoutProgress: saved.hideoutProgress && typeof saved.hideoutProgress === "object" ? saved.hideoutProgress : {}
       };
     }
 
     return {
       manualProgress: { ...saved },
-      questProgress: {}
+      questProgress: {},
+      hideoutProgress: {}
     };
   }
 
@@ -217,11 +419,14 @@
       const data = await window.TarkovApi.fetchTarkovBase();
       const mappedItems = window.TarkovDataMapper.mapTarkovData(data);
       const mappedQuests = window.TarkovDataMapper.mapQuestData(data);
+      const mappedHideoutUpgrades = window.TarkovDataMapper.mapHideoutData(data);
       state.items = normalizeLoadedItems(mappedItems);
       state.quests = normalizeLoadedQuests(mappedQuests);
-      cacheBase(state.items, state.quests);
+      state.hideoutUpgrades = normalizeLoadedHideoutUpgrades(mappedHideoutUpgrades);
+      cacheBase(state.items, state.quests, state.hideoutUpgrades);
       saveProgress();
       populateTraderFilter();
+      populateHideoutStationFilter();
       render();
       elements.dataSource.textContent = `Base atualizada via tarkov.dev (${state.items.length} itens). Progresso preservado.`;
     } catch (error) {
@@ -243,6 +448,7 @@
     state.currentView = view;
     elements.itemsView.hidden = view !== "items";
     elements.questsView.hidden = view !== "quests";
+    elements.hideoutView.hidden = view !== "hideout";
     elements.tabButtons.forEach((button) => {
       button.classList.toggle("active", button.dataset.view === view);
     });
@@ -262,23 +468,34 @@
     const item = state.items.find((entry) => entry.id === itemId);
     if (!item) return;
 
-    const questCollected = getQuestContribution(itemId);
-    const collected = clamp(Number(amount) || 0, questCollected, item.totalRequired);
-    state.progress.manualProgress[itemId] = Math.max(collected - questCollected, 0);
+    const automaticCollected = getAutomaticContribution(itemId);
+    const collected = clamp(Number(amount) || 0, automaticCollected, item.totalRequired);
+    state.progress.manualProgress[itemId] = Math.max(collected - automaticCollected, 0);
     saveProgress();
     render();
   }
 
   function getCollected(item) {
     const manual = Number(state.progress.manualProgress[item.id]) || 0;
-    const quest = getQuestContribution(item.id);
-    return clamp(manual + quest, 0, item.totalRequired);
+    const automatic = getAutomaticContribution(item.id);
+    return clamp(manual + automatic, 0, item.totalRequired);
+  }
+
+  function getAutomaticContribution(itemId) {
+    return getQuestContribution(itemId) + getHideoutContribution(itemId);
   }
 
   function getQuestContribution(itemId) {
-    return Object.values(state.progress.questProgress).reduce((sum, questState) => {
+    return Object.values(state.progress.questProgress || {}).reduce((sum, questState) => {
       if (!questState || !questState.completed || !questState.appliedItems) return sum;
       return sum + (Number(questState.appliedItems[itemId]) || 0);
+    }, 0);
+  }
+
+  function getHideoutContribution(itemId) {
+    return Object.values(state.progress.hideoutProgress || {}).reduce((sum, upgradeState) => {
+      if (!upgradeState || !upgradeState.completed || !upgradeState.appliedItems) return sum;
+      return sum + (Number(upgradeState.appliedItems[itemId]) || 0);
     }, 0);
   }
 
@@ -289,6 +506,11 @@
   function render() {
     if (state.currentView === "quests") {
       renderQuestsView();
+      return;
+    }
+
+    if (state.currentView === "hideout") {
+      renderHideoutView();
       return;
     }
 
@@ -326,6 +548,19 @@
     elements.questVisibleCount.textContent = `${visibleQuests.length} ${visibleQuests.length === 1 ? "quest exibida" : "quests exibidas"}`;
     elements.questProgressSummary.textContent = `${completedCount} de ${state.quests.length} completas`;
     elements.questEmptyState.hidden = visibleQuests.length > 0;
+  }
+
+  function renderHideoutView() {
+    const visibleUpgrades = state.hideoutUpgrades.filter(matchesHideoutView);
+    elements.hideoutCardsGrid.innerHTML = "";
+    visibleUpgrades.forEach((upgrade) => {
+      elements.hideoutCardsGrid.appendChild(createHideoutCard(upgrade));
+    });
+
+    const completedCount = state.hideoutUpgrades.filter((upgrade) => isHideoutCompleted(upgrade.id)).length;
+    elements.hideoutVisibleCount.textContent = `${visibleUpgrades.length} ${visibleUpgrades.length === 1 ? "upgrade exibido" : "upgrades exibidos"}`;
+    elements.hideoutProgressSummary.textContent = `${completedCount} de ${state.hideoutUpgrades.length} completos`;
+    elements.hideoutEmptyState.hidden = visibleUpgrades.length > 0;
   }
 
   function renderSummary(summaryItems) {
@@ -448,6 +683,30 @@
     render();
   }
 
+  function handleHideoutFilterClick(filter, isMultiSelect) {
+    if (!isMultiSelect || filter === "all") {
+      state.hideoutFilters = new Set([filter]);
+      updateHideoutFilterButtons();
+      render();
+      return;
+    }
+
+    state.hideoutFilters.delete("all");
+
+    if (state.hideoutFilters.has(filter)) {
+      state.hideoutFilters.delete(filter);
+    } else {
+      state.hideoutFilters.add(filter);
+    }
+
+    if (state.hideoutFilters.size === 0) {
+      state.hideoutFilters.add("all");
+    }
+
+    updateHideoutFilterButtons();
+    render();
+  }
+
   function updateFilterButtons() {
     elements.filterButtons.forEach((button) => {
       button.classList.toggle("active", state.filters.has(button.dataset.filter));
@@ -457,6 +716,12 @@
   function updateQuestFilterButtons() {
     elements.questFilterButtons.forEach((button) => {
       button.classList.toggle("active", state.questFilters.has(button.dataset.questFilter));
+    });
+  }
+
+  function updateHideoutFilterButtons() {
+    elements.hideoutFilterButtons.forEach((button) => {
+      button.classList.toggle("active", state.hideoutFilters.has(button.dataset.hideoutFilter));
     });
   }
 
@@ -474,6 +739,22 @@
 
     elements.questTraderFilter.value = traders.includes(selected) ? selected : "all";
     state.questTrader = elements.questTraderFilter.value;
+  }
+
+  function populateHideoutStationFilter() {
+    const selected = state.hideoutStation;
+    const stations = Array.from(new Set(state.hideoutUpgrades.map((upgrade) => upgrade.stationName).filter(Boolean))).sort();
+    elements.hideoutStationFilter.innerHTML = '<option value="all">Todas as estações</option>';
+
+    stations.forEach((station) => {
+      const option = document.createElement("option");
+      option.value = station;
+      option.textContent = station;
+      elements.hideoutStationFilter.appendChild(option);
+    });
+
+    elements.hideoutStationFilter.value = stations.includes(selected) ? selected : "all";
+    state.hideoutStation = elements.hideoutStationFilter.value;
   }
 
   function matchesQuestView(quest) {
@@ -494,6 +775,27 @@
       if (filter === "complete") return completed;
       if (filter === "kappa") return quest.requiredForKappa;
       if (filter === "non-kappa") return !quest.requiredForKappa;
+      return true;
+    });
+  }
+
+  function matchesHideoutView(upgrade) {
+    const completed = isHideoutCompleted(upgrade.id);
+    const searchTarget = [
+      upgrade.stationName,
+      `level ${upgrade.level}`,
+      `nível ${upgrade.level}`,
+      upgrade.requiredItems.map((item) => `${item.name} ${item.shortName}`).join(" ")
+    ].join(" ").toLowerCase();
+    const matchesSearch = !state.hideoutSearch || searchTarget.includes(state.hideoutSearch);
+    const matchesStation = state.hideoutStation === "all" || upgrade.stationName === state.hideoutStation;
+
+    if (!matchesSearch || !matchesStation) return false;
+
+    return Array.from(state.hideoutFilters).every((filter) => {
+      if (filter === "all") return true;
+      if (filter === "pending") return !completed;
+      if (filter === "complete") return completed;
       return true;
     });
   }
@@ -604,7 +906,9 @@
       setCollected(item.id, event.shiftKey ? item.totalRequired : collected + 1);
     });
 
-    card.querySelector('[data-action="open-usages"]').addEventListener("click", () => {
+    card.querySelector('[data-action="open-usages"]').addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       openUsageModal(item, contextUsages);
     });
 
@@ -653,6 +957,46 @@
     return card;
   }
 
+  function createHideoutCard(upgrade) {
+    const completed = isHideoutCompleted(upgrade.id);
+    const card = document.createElement("article");
+
+    card.className = `quest-card ${completed ? "complete" : "pending"}`;
+    card.innerHTML = `
+      <div class="quest-card-header">
+        <div class="quest-trader-image">
+          ${upgrade.stationImage ? `<img src="${escapeAttribute(upgrade.stationImage)}" alt="${escapeAttribute(upgrade.stationName || "Hideout")}" loading="lazy">` : "<span>H</span>"}
+        </div>
+        <div class="quest-title-block">
+          <h3>${escapeHtml(upgrade.stationName || "Hideout")}</h3>
+          <p>Nível ${Number(upgrade.level) || 0}</p>
+        </div>
+      </div>
+      <div class="badge-row">
+        <span class="badge hideout">${completed ? "Completo" : "Pendente"}</span>
+        <span class="badge">Upgrade nível ${Number(upgrade.level) || 0}</span>
+        <span class="badge">${upgrade.itemCount} item${upgrade.itemCount === 1 ? "" : "s"}</span>
+      </div>
+      <div class="quest-actions">
+        <button class="${completed ? "ghost-button" : "primary-button"}" type="button" data-action="toggle-hideout">
+          ${completed ? "Desmarcar como completo" : "Marcar como completo"}
+        </button>
+      </div>
+      <details class="quest-items-details">
+        <summary>Itens exigidos (${upgrade.requiredItems.length})</summary>
+        <div class="quest-required-items">
+          ${upgrade.requiredItems.length > 0 ? upgrade.requiredItems.map(renderUpgradeRequiredItem).join("") : '<p class="muted-text">Este upgrade não tem item rastreável.</p>'}
+        </div>
+      </details>
+    `;
+
+    card.querySelector('[data-action="toggle-hideout"]').addEventListener("click", () => {
+      toggleHideoutCompletion(upgrade);
+    });
+
+    return card;
+  }
+
   function renderQuestRequiredItem(item) {
     return `
       <div class="quest-required-item">
@@ -670,17 +1014,53 @@
     `;
   }
 
+  function renderUpgradeRequiredItem(item) {
+    return `
+      <div class="quest-required-item">
+        <div class="quest-required-image">
+          ${item.icon ? `<img src="${escapeAttribute(item.icon)}" alt="${escapeAttribute(item.name)}" loading="lazy">` : "<span>?</span>"}
+        </div>
+        <div>
+          <strong>${escapeHtml(item.name)}</strong>
+          <div class="use-tags">
+            <span class="use-tag">x${Number(item.quantity || 0)}</span>
+            <span class="use-tag">Não FIR</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function isQuestCompleted(questId) {
     return Boolean(state.progress.questProgress[questId] && state.progress.questProgress[questId].completed);
   }
 
-  function toggleQuestCompletion(quest) {
+  function isHideoutCompleted(upgradeId) {
+    return Boolean(state.progress.hideoutProgress[upgradeId] && state.progress.hideoutProgress[upgradeId].completed);
+  }
+
+  function toggleQuestCompletion(quest, options = {}) {
     if (isQuestCompleted(quest.id)) {
       delete state.progress.questProgress[quest.id];
     } else {
       state.progress.questProgress[quest.id] = {
         completed: true,
         appliedItems: getQuestAppliedItems(quest)
+      };
+    }
+
+    saveProgress();
+    if (options.render === false) return;
+    render();
+  }
+
+  function toggleHideoutCompletion(upgrade) {
+    if (isHideoutCompleted(upgrade.id)) {
+      delete state.progress.hideoutProgress[upgrade.id];
+    } else {
+      state.progress.hideoutProgress[upgrade.id] = {
+        completed: true,
+        appliedItems: getHideoutAppliedItems(upgrade)
       };
     }
 
@@ -695,8 +1075,27 @@
       const item = state.items.find((entry) => entry.id === requiredItem.itemId);
       if (!item) return;
 
-      const alreadyFromQuests = getQuestContribution(requiredItem.itemId);
-      const available = Math.max(item.totalRequired - alreadyFromQuests, 0);
+      const alreadyAutomatic = getAutomaticContribution(requiredItem.itemId);
+      const available = Math.max(item.totalRequired - alreadyAutomatic, 0);
+      const quantity = Math.min(Number(requiredItem.quantity) || 0, available);
+
+      if (quantity > 0) {
+        appliedItems[requiredItem.itemId] = (appliedItems[requiredItem.itemId] || 0) + quantity;
+      }
+    });
+
+    return appliedItems;
+  }
+
+  function getHideoutAppliedItems(upgrade) {
+    const appliedItems = {};
+
+    upgrade.requiredItems.forEach((requiredItem) => {
+      const item = state.items.find((entry) => entry.id === requiredItem.itemId);
+      if (!item) return;
+
+      const alreadyAutomatic = getAutomaticContribution(requiredItem.itemId);
+      const available = Math.max(item.totalRequired - alreadyAutomatic, 0);
       const quantity = Math.min(Number(requiredItem.quantity) || 0, available);
 
       if (quantity > 0) {
@@ -708,9 +1107,12 @@
   }
 
   function openUsageModal(item, usages) {
-    const contextUsages = usages && usages.length > 0 ? usages : getContextUsages(item);
+    const rawUsages = Array.isArray(usages) && usages.length > 0 ? usages : getContextUsages(item);
+    const contextUsages = safelyGroupDuplicateUsages(rawUsages);
     elements.usageModalTitle.textContent = item.name;
-    elements.modalUsageList.innerHTML = contextUsages.map(renderUse).join("");
+    elements.modalUsageList.innerHTML = contextUsages.length > 0
+      ? contextUsages.map(renderUse).join("")
+      : '<p class="muted-text">Nenhum uso encontrado para os filtros atuais.</p>';
 
     if (item.icon) {
       elements.modalItemIcon.src = item.icon;
@@ -726,9 +1128,79 @@
     elements.closeUsageModal.focus();
   }
 
+  function safelyGroupDuplicateUsages(usages) {
+    try {
+      return groupDuplicateUsages(usages);
+    } catch (error) {
+      console.error("Erro ao agrupar usos do item:", error);
+      return (Array.isArray(usages) ? usages : []).filter(Boolean);
+    }
+  }
+
   function closeUsageModal() {
     elements.usageModal.hidden = true;
     document.body.classList.remove("modal-open");
+  }
+
+  function groupDuplicateUsages(usages) {
+    const grouped = new Map();
+
+    (Array.isArray(usages) ? usages : []).filter(Boolean).forEach((usage) => {
+      const key = getDuplicateUsageKey(usage);
+      const existing = grouped.get(key);
+
+      if (existing) {
+        existing.quantity = Number(existing.quantity || 0) + Number(usage.quantity || 0);
+        existing.alternativeItems = mergeUsageAlternatives(existing.alternativeItems, usage.alternativeItems);
+        return;
+      }
+
+      grouped.set(key, normalizeUsageForModal(usage));
+    });
+
+    return Array.from(grouped.values());
+  }
+
+  function normalizeUsageForModal(usage) {
+    return Object.assign({}, usage, {
+      quantity: Number(usage.quantity || 0),
+      alternativeItems: Array.isArray(usage.alternativeItems) ? usage.alternativeItems : []
+    });
+  }
+
+  function getDuplicateUsageKey(usage) {
+    if (usage.type === "quest") {
+      return [
+        usage.type,
+        usage.questName || usage.questId || "",
+        usage.trader || "",
+        normalizeLoadedObjectiveDescription(usage.objectiveDescription || ""),
+        Boolean(usage.foundInRaid),
+        Boolean(usage.requiredForKappa)
+      ].join("|");
+    }
+
+    return [
+      usage.type,
+      usage.stationId || usage.stationName || "",
+      Number(usage.level) || 0,
+      Boolean(usage.foundInRaid),
+      Boolean(usage.requiredForKappa)
+    ].join("|");
+  }
+
+  function mergeUsageAlternatives(currentItems, nextItems) {
+    const merged = new Map();
+
+    const current = Array.isArray(currentItems) ? currentItems : [];
+    const next = Array.isArray(nextItems) ? nextItems : [];
+
+    current.concat(next).forEach((item) => {
+      if (!item || !item.id) return;
+      merged.set(item.id, item);
+    });
+
+    return Array.from(merged.values());
   }
 
   function renderUse(use) {
@@ -812,6 +1284,12 @@
         Object.entries(progress.questProgress).forEach(([questId, questState]) => {
           if (questState && questState.completed && questState.appliedItems) {
             nextProgress.questProgress[questId] = questState;
+          }
+        });
+
+        Object.entries(progress.hideoutProgress).forEach(([upgradeId, upgradeState]) => {
+          if (upgradeState && upgradeState.completed && upgradeState.appliedItems) {
+            nextProgress.hideoutProgress[upgradeId] = upgradeState;
           }
         });
 

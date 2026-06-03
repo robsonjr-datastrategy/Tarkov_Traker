@@ -25,6 +25,7 @@
     <nav class="view-tabs" aria-label="Áreas do tracker">
       <button class="tab-button active" type="button" data-view="items">Itens</button>
       <button class="tab-button" type="button" data-view="quests">Quests</button>
+      <button class="tab-button" type="button" data-view="hideout">Hideout</button>
     </nav>
 
     <section id="itemsView">
@@ -126,13 +127,13 @@
     </section>
 
     <section id="questsView" hidden>
-      <section class="controls-panel" aria-label="Controles de quests">
+      <section class="controls-panel tab-controls-panel" aria-label="Controles de quests">
         <label class="search-field">
           <span>Buscar quest ou trader</span>
           <input id="questSearchInput" type="search" placeholder="Ex.: Shortage, Prapor, Collector">
         </label>
 
-        <div>
+        <div class="tab-filter-panel">
           <div class="filter-group quest-filter-group" role="group" aria-label="Filtros de quests">
             <button class="quest-filter-button active" type="button" data-quest-filter="all">Todas</button>
             <button class="quest-filter-button" type="button" data-quest-filter="pending">Pendentes</button>
@@ -163,6 +164,44 @@
       </section>
 
       <p id="questEmptyState" class="empty-state" hidden>Nenhuma quest encontrada com os filtros atuais.</p>
+    </section>
+
+    <section id="hideoutView" hidden>
+      <section class="controls-panel tab-controls-panel" aria-label="Controles de hideout">
+        <label class="search-field">
+          <span>Buscar estação ou item</span>
+          <input id="hideoutSearchInput" type="search" placeholder="Ex.: Medstation, Generator, CPU fan">
+        </label>
+
+        <div class="tab-filter-panel">
+          <div class="filter-group hideout-filter-group" role="group" aria-label="Filtros de hideout">
+            <button class="hideout-filter-button active" type="button" data-hideout-filter="all">Todos</button>
+            <button class="hideout-filter-button" type="button" data-hideout-filter="pending">Pendentes</button>
+            <button class="hideout-filter-button" type="button" data-hideout-filter="complete">Completos</button>
+          </div>
+          <label class="select-field">
+            <span>Estação</span>
+            <select id="hideoutStationFilter">
+              <option value="all">Todas as estações</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section class="status-row" aria-live="polite">
+        <span id="hideoutVisibleCount">0 upgrades exibidos</span>
+        <span id="hideoutProgressSummary">0 completos</span>
+      </section>
+
+      <section class="item-section">
+        <div class="section-heading">
+          <h2>Hideout</h2>
+          <span>Marque upgrades completos para aplicar os itens utilizados</span>
+        </div>
+        <div id="hideoutCardsGrid" class="quest-cards-grid"></div>
+      </section>
+
+      <p id="hideoutEmptyState" class="empty-state" hidden>Nenhum upgrade encontrado com os filtros atuais.</p>
     </section>
   </main>
 

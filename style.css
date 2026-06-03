@@ -1,17 +1,17 @@
 :root {
   color-scheme: dark;
-  --bg-main: #06111f;
-  --bg-panel: #0b1b2e;
-  --bg-card: #10243a;
-  --bg-card-hover: #14304d;
-  --border-soft: #203a59;
-  --blue-primary: #2f80ed;
-  --blue-secondary: #1c5fa8;
-  --blue-light: #63a4ff;
-  --text-main: #f4f8ff;
-  --text-muted: #9fb3c8;
-  --success: #3ddc97;
-  --danger: #ff6b6b;
+  --bg-main: #080908;
+  --bg-panel: #111310;
+  --bg-card: #1c1f1b;
+  --bg-card-hover: #252a23;
+  --border-soft: #35372b;
+  --blue-primary: #6f735f;
+  --blue-secondary: #4f5546;
+  --blue-light: #9aa083;
+  --text-main: #e8e6da;
+  --text-muted: #a5a394;
+  --success: #5f7d52;
+  --danger: #9b5a49;
   --bg: var(--bg-main);
   --panel: var(--bg-panel);
   --panel-2: var(--bg-card);
@@ -21,9 +21,9 @@
   --accent: var(--blue-primary);
   --accent-2: var(--blue-light);
   --complete: var(--success);
-  --quest: #3b82f6;
-  --hideout: #38bdf8;
-  --kappa: #8b9cff;
+  --quest: #8a8772;
+  --hideout: #61745a;
+  --kappa: #77715c;
   --shadow: rgba(0, 0, 0, 0.42);
 }
 
@@ -32,15 +32,33 @@
 }
 
 body {
+  position: relative;
+  isolation: isolate;
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at 18% 0%, rgba(47, 128, 237, 0.16), transparent 420px),
-    linear-gradient(180deg, rgba(99, 164, 255, 0.08), transparent 380px),
+    radial-gradient(circle at 18% 0%, rgba(130, 134, 104, 0.12), transparent 420px),
+    linear-gradient(180deg, rgba(91, 106, 82, 0.08), transparent 380px),
     repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 72px),
     var(--bg);
   color: var(--text);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(8, 9, 8, 0.98) 0%, rgba(8, 9, 8, 0.88) 50%, rgba(8, 9, 8, 0.96) 100%),
+    url("https://assets.tarkov.dev/the-wedge-poster.webp");
+  background-position: right center;
+  background-repeat: no-repeat;
+  background-size: min(760px, 55vw) auto;
+  filter: grayscale(0.2) contrast(0.9) brightness(0.72);
+  opacity: 0.28;
 }
 
 button,
@@ -63,6 +81,8 @@ a {
 
 .app-header,
 .app-shell {
+  position: relative;
+  z-index: 1;
   width: min(1240px, calc(100% - 32px));
   margin: 0 auto;
 }
@@ -109,6 +129,7 @@ h1 {
 .danger-button,
 .filter-button,
 .quest-filter-button,
+.hideout-filter-button,
 .tab-button,
 .counter-button,
 .usage-button,
@@ -128,20 +149,21 @@ h1 {
 }
 
 .primary-button {
-  border-color: rgba(99, 164, 255, 0.7);
-  color: #f8fbff;
+  border-color: rgba(154, 160, 131, 0.6);
+  color: #f2efe4;
   background: linear-gradient(180deg, var(--blue-primary), var(--blue-secondary));
   font-weight: 700;
 }
 
 .primary-button:hover {
   border-color: var(--blue-light);
-  background: linear-gradient(180deg, #3f8cf2, #246bb9);
+  background: linear-gradient(180deg, #7f856e, #5c6352);
 }
 
 .ghost-button:hover,
 .filter-button:hover,
 .quest-filter-button:hover,
+.hideout-filter-button:hover,
 .tab-button:hover,
 .counter-button:hover,
 .usage-button:hover,
@@ -151,13 +173,13 @@ h1 {
 }
 
 .danger-button {
-  border-color: rgba(255, 107, 107, 0.46);
-  background: rgba(255, 107, 107, 0.12);
+  border-color: rgba(197, 111, 85, 0.46);
+  background: rgba(197, 111, 85, 0.12);
 }
 
 .danger-button:hover {
   border-color: var(--danger);
-  background: rgba(255, 107, 107, 0.2);
+  background: rgba(197, 111, 85, 0.2);
 }
 
 .summary-grid {
@@ -172,7 +194,7 @@ h1 {
 .item-card {
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(11, 27, 46, 0.94);
+  background: rgba(18, 23, 15, 0.94);
   box-shadow: 0 16px 40px var(--shadow);
 }
 
@@ -220,8 +242,8 @@ h1 {
   margin-top: 10px;
   overflow: hidden;
   border-radius: 999px;
-  background: #06111f;
-  border: 1px solid #18304c;
+  background: #0b0f0a;
+  border: 1px solid #2b3323;
 }
 
 .progress-fill {
@@ -239,9 +261,33 @@ h1 {
 .controls-panel {
   display: grid;
   grid-template-columns: minmax(250px, 1fr) 2fr;
+  align-items: end;
   gap: 16px;
   margin-top: 14px;
   padding: 16px;
+}
+
+.tab-controls-panel {
+  grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr);
+}
+
+.tab-controls-panel > .search-field {
+  order: 2;
+}
+
+.tab-filter-panel {
+  order: 1;
+  display: grid;
+  gap: 8px;
+}
+
+.tab-filter-panel .filter-group {
+  justify-content: flex-start;
+}
+
+.tab-filter-panel .select-field {
+  justify-self: start;
+  width: min(100%, 520px);
 }
 
 .search-field {
@@ -249,14 +295,15 @@ h1 {
   gap: 8px;
 }
 
-.search-field input {
+.search-field input,
+.select-field select {
   width: 100%;
-  min-height: 44px;
+  min-height: 52px;
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 0 12px;
   color: var(--text);
-  background: #081625;
+  background: #0d120c;
   outline: none;
 }
 
@@ -267,19 +314,31 @@ h1 {
 .filter-group {
   display: flex;
   flex-wrap: wrap;
-  align-content: end;
+  justify-content: flex-end;
+  align-content: start;
   gap: 8px;
+}
+
+.controls-panel:not(.tab-controls-panel) > .filter-group {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: stretch;
 }
 
 .filter-button {
   padding: 0 12px;
 }
 
+.controls-panel:not(.tab-controls-panel) .filter-button {
+  width: 100%;
+}
+
 .filter-button.active,
 .quest-filter-button.active,
+.hideout-filter-button.active,
 .tab-button.active {
   border-color: var(--accent);
-  color: #f8fbff;
+  color: #f2efe4;
   background: linear-gradient(180deg, var(--blue-primary), var(--blue-secondary));
 }
 
@@ -295,24 +354,16 @@ h1 {
   font-weight: 700;
 }
 
-.quest-filter-button {
+.quest-filter-button,
+.hideout-filter-button {
   padding: 0 12px;
 }
 
 .select-field {
   display: grid;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: 0;
   color: var(--muted);
-}
-
-.select-field select {
-  min-height: 42px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 0 12px;
-  color: var(--text);
-  background: #081625;
 }
 
 .status-row {
@@ -359,15 +410,15 @@ h1 {
   gap: 12px;
   min-height: 250px;
   padding: 16px;
-  border: 1px solid rgba(47, 128, 237, 0.5);
+  border: 1px solid rgba(111, 115, 95, 0.42);
   border-radius: 8px;
-  background: rgba(11, 27, 46, 0.94);
+  background: rgba(18, 23, 15, 0.94);
   box-shadow: 0 16px 40px var(--shadow);
 }
 
 .quest-card.complete {
-  border-color: rgba(61, 220, 151, 0.68);
-  background: linear-gradient(180deg, rgba(61, 220, 151, 0.1), rgba(16, 36, 58, 0.96));
+  border-color: rgba(127, 163, 106, 0.68);
+  background: linear-gradient(180deg, rgba(127, 163, 106, 0.1), rgba(26, 33, 24, 0.96));
 }
 
 .quest-card-header {
@@ -386,7 +437,7 @@ h1 {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #081625;
+  background: #0d120c;
 }
 
 .quest-trader-image img,
@@ -463,17 +514,17 @@ h1 {
 }
 
 .item-card.complete {
-  border-color: rgba(99, 164, 255, 0.78);
-  background: linear-gradient(180deg, rgba(61, 220, 151, 0.11), rgba(16, 36, 58, 0.96));
+  border-color: rgba(127, 163, 106, 0.78);
+  background: linear-gradient(180deg, rgba(127, 163, 106, 0.12), rgba(26, 33, 24, 0.96));
 }
 
 .item-card.pending {
-  border-color: rgba(47, 128, 237, 0.55);
+  border-color: rgba(111, 115, 95, 0.5);
 }
 
 .item-card:hover {
-  border-color: rgba(99, 164, 255, 0.72);
-  background: rgba(20, 48, 77, 0.96);
+  border-color: rgba(154, 160, 131, 0.58);
+  background: rgba(34, 43, 31, 0.96);
 }
 
 .card-top {
@@ -489,7 +540,7 @@ h1 {
   place-items: center;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #081625;
+  background: #0d120c;
   text-decoration: none;
 }
 
@@ -539,22 +590,22 @@ h1 {
 }
 
 .badge.quest {
-  border-color: rgba(47, 128, 237, 0.7);
-  color: #b9d7ff;
-  background: rgba(47, 128, 237, 0.12);
+  border-color: rgba(138, 135, 114, 0.62);
+  color: #d0cdbb;
+  background: rgba(138, 135, 114, 0.11);
 }
 
 .badge.hideout {
-  border-color: rgba(56, 189, 248, 0.68);
-  color: #baecff;
-  background: rgba(56, 189, 248, 0.1);
+  border-color: rgba(97, 116, 90, 0.72);
+  color: #b8c8ad;
+  background: rgba(97, 116, 90, 0.14);
 }
 
 .badge.kappa,
 .use-tag.kappa {
-  border-color: rgba(139, 156, 255, 0.72);
-  color: #d3dcff;
-  background: rgba(139, 156, 255, 0.1);
+  border-color: rgba(119, 113, 92, 0.72);
+  color: #c9c0a7;
+  background: rgba(119, 113, 92, 0.12);
 }
 
 .badge.non-kappa {
@@ -564,15 +615,15 @@ h1 {
 }
 
 .badge.fir {
-  border-color: rgba(99, 164, 255, 0.68);
+  border-color: rgba(154, 160, 131, 0.6);
   color: var(--blue-light);
-  background: rgba(99, 164, 255, 0.1);
+  background: rgba(154, 160, 131, 0.1);
 }
 
 .badge.done {
-  border-color: rgba(61, 220, 151, 0.78);
-  color: #9af2cc;
-  background: rgba(61, 220, 151, 0.1);
+  border-color: rgba(127, 163, 106, 0.78);
+  color: #c7e0b0;
+  background: rgba(127, 163, 106, 0.12);
 }
 
 .card-counter {
@@ -580,7 +631,7 @@ h1 {
   margin: 16px 0;
   padding: 12px;
   border-radius: 6px;
-  background: rgba(6, 17, 31, 0.76);
+  background: rgba(11, 15, 10, 0.76);
 }
 
 .counter-button {
@@ -620,7 +671,7 @@ h1 {
   width: 100%;
   margin-top: 2px;
   color: var(--blue-light);
-  background: rgba(47, 128, 237, 0.1);
+  background: rgba(111, 115, 95, 0.13);
 }
 
 .usage-details {
@@ -679,7 +730,7 @@ h1 {
   display: grid;
   place-items: center;
   padding: 16px;
-  background: rgba(2, 8, 16, 0.78);
+  background: rgba(4, 7, 4, 0.78);
   backdrop-filter: blur(8px);
 }
 
@@ -694,9 +745,9 @@ h1 {
   height: min(860px, calc(100dvh - 32px));
   max-height: calc(100dvh - 32px);
   overflow: hidden;
-  border: 1px solid rgba(99, 164, 255, 0.32);
+  border: 1px solid rgba(154, 160, 131, 0.28);
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(16, 36, 58, 0.98), rgba(11, 27, 46, 0.98));
+  background: linear-gradient(180deg, rgba(26, 33, 24, 0.98), rgba(18, 23, 15, 0.98));
   box-shadow: 0 26px 90px rgba(0, 0, 0, 0.58);
 }
 
@@ -723,7 +774,7 @@ h1 {
   object-fit: contain;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #081625;
+  background: #0d120c;
 }
 
 .modal-item h2 {
@@ -747,7 +798,7 @@ h1 {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 18px;
-  scrollbar-color: var(--blue-light) rgba(6, 17, 31, 0.76);
+  scrollbar-color: var(--blue-light) rgba(11, 15, 10, 0.76);
   scrollbar-width: thin;
 }
 
@@ -756,11 +807,11 @@ h1 {
 }
 
 .modal-usage-list::-webkit-scrollbar-track {
-  background: rgba(6, 17, 31, 0.76);
+  background: rgba(11, 15, 10, 0.76);
 }
 
 .modal-usage-list::-webkit-scrollbar-thumb {
-  border: 2px solid rgba(6, 17, 31, 0.76);
+  border: 2px solid rgba(11, 15, 10, 0.76);
   border-radius: 999px;
   background: var(--blue-light);
 }
@@ -772,7 +823,7 @@ h1 {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(6, 17, 31, 0.54);
+  background: rgba(11, 15, 10, 0.54);
 }
 
 .usage-media {
@@ -783,7 +834,7 @@ h1 {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #081625;
+  background: #0d120c;
 }
 
 .usage-media img {
@@ -799,7 +850,7 @@ h1 {
   place-items: center;
   color: var(--blue-light);
   font-weight: 800;
-  background: rgba(47, 128, 237, 0.12);
+  background: rgba(111, 115, 95, 0.12);
 }
 
 .usage-content {
@@ -815,6 +866,15 @@ h1 {
 
   .controls-panel {
     grid-template-columns: 1fr;
+  }
+
+  .tab-filter-panel .filter-group {
+    justify-content: flex-start;
+  }
+
+  .tab-filter-panel .select-field {
+    justify-self: stretch;
+    width: 100%;
   }
 }
 
@@ -855,8 +915,13 @@ h1 {
   }
 
   .filter-button,
-  .quest-filter-button {
+  .quest-filter-button,
+  .hideout-filter-button {
     flex: 1 1 calc(50% - 8px);
+  }
+
+  .controls-panel:not(.tab-controls-panel) > .filter-group {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .modal-backdrop {

@@ -22,6 +22,7 @@ O tracker agrupa os itens reais do jogo por ID, soma a quantidade total necessar
 - Pop-up com detalhes de uso, trader, hideout e requisitos
 - Aba de quests com busca, filtros, trader, Kappa e itens exigidos
 - Marcacao de quest completa com aplicacao automatica dos itens entregues
+- Aba de hideout com upgrades por estacao/nivel e aplicacao automatica dos itens usados
 - Exportacao e importacao de progresso em JSON
 - Atualizacao da base via API GraphQL publica do tarkov.dev
 - Fallback offline com `items.generated.js`
@@ -64,6 +65,14 @@ O progresso e salvo separando coleta manual de progresso vindo de quests complet
   },
   questProgress: {
     [questId]: {
+      completed: true,
+      appliedItems: {
+        [itemId]: quantity
+      }
+    }
+  },
+  hideoutProgress: {
+    [upgradeId]: {
       completed: true,
       appliedItems: {
         [itemId]: quantity
