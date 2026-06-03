@@ -1230,7 +1230,6 @@
         usage.type,
         usage.questName || usage.questId || "",
         usage.trader || "",
-        normalizeLoadedObjectiveDescription(usage.objectiveDescription || ""),
         Boolean(usage.foundInRaid),
         Boolean(usage.requiredForKappa)
       ].join("|");
