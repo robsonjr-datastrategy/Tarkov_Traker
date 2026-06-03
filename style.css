@@ -108,6 +108,8 @@ h1 {
 .ghost-button,
 .danger-button,
 .filter-button,
+.quest-filter-button,
+.tab-button,
 .counter-button,
 .usage-button,
 .icon-button {
@@ -139,6 +141,8 @@ h1 {
 
 .ghost-button:hover,
 .filter-button:hover,
+.quest-filter-button:hover,
+.tab-button:hover,
 .counter-button:hover,
 .usage-button:hover,
 .icon-button:hover {
@@ -271,10 +275,44 @@ h1 {
   padding: 0 12px;
 }
 
-.filter-button.active {
+.filter-button.active,
+.quest-filter-button.active,
+.tab-button.active {
   border-color: var(--accent);
   color: #f8fbff;
   background: linear-gradient(180deg, var(--blue-primary), var(--blue-secondary));
+}
+
+.view-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.tab-button {
+  min-width: 110px;
+  padding: 0 18px;
+  font-weight: 700;
+}
+
+.quest-filter-button {
+  padding: 0 12px;
+}
+
+.select-field {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--muted);
+}
+
+.select-field select {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 12px;
+  color: var(--text);
+  background: #081625;
 }
 
 .status-row {
@@ -301,12 +339,127 @@ h1 {
   gap: 12px;
 }
 
+.quest-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .item-card {
   display: grid;
   align-content: start;
   min-height: 310px;
   padding: 16px;
   border-color: var(--border-soft);
+}
+
+.quest-card {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-height: 250px;
+  padding: 16px;
+  border: 1px solid rgba(47, 128, 237, 0.5);
+  border-radius: 8px;
+  background: rgba(11, 27, 46, 0.94);
+  box-shadow: 0 16px 40px var(--shadow);
+}
+
+.quest-card.complete {
+  border-color: rgba(61, 220, 151, 0.68);
+  background: linear-gradient(180deg, rgba(61, 220, 151, 0.1), rgba(16, 36, 58, 0.96));
+}
+
+.quest-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.quest-trader-image,
+.quest-required-image {
+  display: grid;
+  flex: 0 0 58px;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #081625;
+}
+
+.quest-trader-image img,
+.quest-required-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.quest-required-image img {
+  object-fit: contain;
+  padding: 4px;
+}
+
+.quest-title-block {
+  min-width: 0;
+}
+
+.quest-title-block h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.25;
+}
+
+.quest-title-block p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.quest-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.quest-link {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+}
+
+.quest-items-details {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.quest-items-details summary {
+  color: var(--blue-light);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.quest-required-items {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.quest-required-item {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(6, 17, 31, 0.48);
+}
+
+.muted-text {
+  margin-bottom: 0;
+  color: var(--muted);
 }
 
 .item-card.complete {
@@ -655,7 +808,8 @@ h1 {
 
 @media (max-width: 1000px) {
   .summary-grid,
-  .cards-grid {
+  .cards-grid,
+  .quest-cards-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -682,7 +836,8 @@ h1 {
   }
 
   .summary-grid,
-  .cards-grid {
+  .cards-grid,
+  .quest-cards-grid {
     grid-template-columns: 1fr;
   }
 
@@ -699,7 +854,8 @@ h1 {
     flex-direction: column;
   }
 
-  .filter-button {
+  .filter-button,
+  .quest-filter-button {
     flex: 1 1 calc(50% - 8px);
   }
 

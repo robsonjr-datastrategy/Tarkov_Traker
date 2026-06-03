@@ -94,6 +94,47 @@
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  function mapQuestData(data) {
+    const tasks = Array.isArray(data.tasks) ? data.tasks : [];
+
+    return tasks.map((task) => {
+      const objectives = Array.isArray(task.objectives) ? task.objectives : [];
+      const requiredItems = objectives
+        .filter((objective) => objective && objective.type && objective.count)
+        .filter((objective) => !isFlexibleItemObjective(objective))
+        .map((objective) => {
+          const item = objective.item || firstItem(objective.items);
+          if (!item || !item.id || isCurrencyItem(item)) return null;
+
+          return {
+            objectiveId: objective.id,
+            description: objective.description || "",
+            itemId: item.id,
+            name: item.name,
+            shortName: item.shortName,
+            icon: item.iconLink || "",
+            wikiLink: item.wikiLink || "",
+            quantity: Number(objective.count) || 0,
+            foundInRaid: Boolean(objective.foundInRaid),
+            alternativeItems: normalizeAlternativeItems(objective.items)
+          };
+        })
+        .filter(Boolean);
+
+      return {
+        id: task.id,
+        name: task.name,
+        trader: task.trader ? task.trader.name : "",
+        traderImage: task.trader ? task.trader.imageLink : "",
+        minPlayerLevel: Number(task.minPlayerLevel) || null,
+        requiredForKappa: Boolean(task.kappaRequired),
+        wikiLink: task.wikiLink || "",
+        itemCount: requiredItems.reduce((sum, item) => sum + item.quantity, 0),
+        requiredItems
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   function addUsage(grouped, item, usage) {
     const existing = grouped.get(item.id) || {
       id: item.id,
@@ -140,6 +181,7 @@
   }
 
   window.TarkovDataMapper = {
-    mapTarkovData
+    mapTarkovData,
+    mapQuestData
   };
 })();

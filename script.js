@@ -1,13 +1,18 @@
 (function () {
   const STORAGE_KEY = "tarkovFirTrackerProgress";
   const BASE_CACHE_KEY = "tarkovFirTrackerBase";
-  const BASE_DATA_VERSION = 5;
+  const BASE_DATA_VERSION = 6;
 
   const state = {
     items: [],
+    quests: [],
     progress: {},
     filters: new Set(["all"]),
+    currentView: "items",
+    questFilters: new Set(["all"]),
     search: "",
+    questSearch: "",
+    questTrader: "all",
     loading: false
   };
 
@@ -23,8 +28,18 @@
     progressLabel: document.getElementById("progressLabel"),
     progressFill: document.getElementById("progressFill"),
     dataSource: document.getElementById("dataSource"),
+    itemsView: document.getElementById("itemsView"),
+    questsView: document.getElementById("questsView"),
+    tabButtons: document.querySelectorAll(".tab-button"),
     searchInput: document.getElementById("searchInput"),
     filterButtons: document.querySelectorAll(".filter-button"),
+    questSearchInput: document.getElementById("questSearchInput"),
+    questFilterButtons: document.querySelectorAll(".quest-filter-button"),
+    questTraderFilter: document.getElementById("questTraderFilter"),
+    questVisibleCount: document.getElementById("questVisibleCount"),
+    questProgressSummary: document.getElementById("questProgressSummary"),
+    questCardsGrid: document.getElementById("questCardsGrid"),
+    questEmptyState: document.getElementById("questEmptyState"),
     visibleCount: document.getElementById("visibleCount"),
     saveState: document.getElementById("saveState"),
     refreshBaseBtn: document.getElementById("refreshBaseBtn"),
@@ -54,15 +69,20 @@
   function loadInitialBase() {
     const cached = loadCachedBase();
     const fallback = normalizeLoadedItems(window.TARKOV_ITEMS || []);
+    const fallbackQuests = normalizeLoadedQuests(window.TARKOV_QUESTS || []);
 
     if (cached.length > 0) {
       state.items = cached;
+      state.quests = normalizeLoadedQuests(loadCachedQuests());
       elements.dataSource.textContent = `Base salva no navegador carregada (${cached.length} itens).`;
+      populateTraderFilter();
       return;
     }
 
     state.items = fallback;
+    state.quests = fallbackQuests;
     elements.dataSource.textContent = `Base local carregada (${fallback.length} itens).`;
+    populateTraderFilter();
   }
 
   function loadCachedBase() {
@@ -75,11 +95,22 @@
     }
   }
 
-  function cacheBase(items) {
+  function loadCachedQuests() {
+    try {
+      const cached = JSON.parse(localStorage.getItem(BASE_CACHE_KEY));
+      if (!cached || cached.version !== BASE_DATA_VERSION) return [];
+      return Array.isArray(cached.quests) ? cached.quests : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function cacheBase(items, quests) {
     localStorage.setItem(BASE_CACHE_KEY, JSON.stringify({
       version: BASE_DATA_VERSION,
       savedAt: new Date().toISOString(),
-      items
+      items,
+      quests
     }));
   }
 
@@ -92,14 +123,39 @@
     })).sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  function normalizeLoadedQuests(quests) {
+    return quests.map((quest) => ({
+      ...quest,
+      requiredItems: Array.isArray(quest.requiredItems) ? quest.requiredItems : []
+    })).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   function bindEvents() {
+    elements.tabButtons.forEach((button) => {
+      button.addEventListener("click", () => setView(button.dataset.view));
+    });
+
     elements.searchInput.addEventListener("input", (event) => {
       state.search = event.target.value.trim().toLowerCase();
       render();
     });
 
+    elements.questSearchInput.addEventListener("input", (event) => {
+      state.questSearch = event.target.value.trim().toLowerCase();
+      render();
+    });
+
     elements.filterButtons.forEach((button) => {
       button.addEventListener("click", (event) => handleFilterClick(button.dataset.filter, event.ctrlKey || event.metaKey));
+    });
+
+    elements.questFilterButtons.forEach((button) => {
+      button.addEventListener("click", (event) => handleQuestFilterClick(button.dataset.questFilter, event.ctrlKey || event.metaKey));
+    });
+
+    elements.questTraderFilter.addEventListener("change", (event) => {
+      state.questTrader = event.target.value;
+      render();
     });
 
     elements.refreshBaseBtn.addEventListener("click", refreshBase);
@@ -119,10 +175,31 @@
   function loadProgress() {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      state.progress = saved && typeof saved === "object" ? saved : {};
+      state.progress = normalizeProgress(saved);
     } catch {
-      state.progress = {};
+      state.progress = normalizeProgress(null);
     }
+  }
+
+  function normalizeProgress(saved) {
+    if (!saved || typeof saved !== "object") {
+      return {
+        manualProgress: {},
+        questProgress: {}
+      };
+    }
+
+    if (saved.manualProgress || saved.questProgress) {
+      return {
+        manualProgress: saved.manualProgress && typeof saved.manualProgress === "object" ? saved.manualProgress : {},
+        questProgress: saved.questProgress && typeof saved.questProgress === "object" ? saved.questProgress : {}
+      };
+    }
+
+    return {
+      manualProgress: { ...saved },
+      questProgress: {}
+    };
   }
 
   function saveProgress() {
@@ -139,9 +216,12 @@
     try {
       const data = await window.TarkovApi.fetchTarkovBase();
       const mappedItems = window.TarkovDataMapper.mapTarkovData(data);
+      const mappedQuests = window.TarkovDataMapper.mapQuestData(data);
       state.items = normalizeLoadedItems(mappedItems);
-      cacheBase(state.items);
+      state.quests = normalizeLoadedQuests(mappedQuests);
+      cacheBase(state.items, state.quests);
       saveProgress();
+      populateTraderFilter();
       render();
       elements.dataSource.textContent = `Base atualizada via tarkov.dev (${state.items.length} itens). Progresso preservado.`;
     } catch (error) {
@@ -159,11 +239,21 @@
     elements.refreshBaseBtn.textContent = isLoading ? "Atualizando..." : "Atualizar base Tarkov";
   }
 
+  function setView(view) {
+    state.currentView = view;
+    elements.itemsView.hidden = view !== "items";
+    elements.questsView.hidden = view !== "quests";
+    elements.tabButtons.forEach((button) => {
+      button.classList.toggle("active", button.dataset.view === view);
+    });
+    render();
+  }
+
   function resetProgress() {
     const confirmed = window.confirm("Resetar todo o progresso salvo localmente?");
     if (!confirmed) return;
 
-    state.progress = {};
+    state.progress = normalizeProgress(null);
     saveProgress();
     render();
   }
@@ -172,14 +262,24 @@
     const item = state.items.find((entry) => entry.id === itemId);
     if (!item) return;
 
-    const collected = clamp(Number(amount) || 0, 0, item.totalRequired);
-    state.progress[itemId] = collected;
+    const questCollected = getQuestContribution(itemId);
+    const collected = clamp(Number(amount) || 0, questCollected, item.totalRequired);
+    state.progress.manualProgress[itemId] = Math.max(collected - questCollected, 0);
     saveProgress();
     render();
   }
 
   function getCollected(item) {
-    return clamp(Number(state.progress[item.id]) || 0, 0, item.totalRequired);
+    const manual = Number(state.progress.manualProgress[item.id]) || 0;
+    const quest = getQuestContribution(item.id);
+    return clamp(manual + quest, 0, item.totalRequired);
+  }
+
+  function getQuestContribution(itemId) {
+    return Object.values(state.progress.questProgress).reduce((sum, questState) => {
+      if (!questState || !questState.completed || !questState.appliedItems) return sum;
+      return sum + (Number(questState.appliedItems[itemId]) || 0);
+    }, 0);
   }
 
   function clamp(value, min, max) {
@@ -187,6 +287,11 @@
   }
 
   function render() {
+    if (state.currentView === "quests") {
+      renderQuestsView();
+      return;
+    }
+
     const visibleItems = state.items.filter(matchesCurrentView);
     const sharedItems = visibleItems.filter((item) => {
       const usages = getContextUsages(item);
@@ -208,6 +313,19 @@
 
     elements.visibleCount.textContent = `${visibleItems.length} ${visibleItems.length === 1 ? "item exibido" : "itens exibidos"}`;
     elements.emptyState.hidden = visibleItems.length > 0;
+  }
+
+  function renderQuestsView() {
+    const visibleQuests = state.quests.filter(matchesQuestView);
+    elements.questCardsGrid.innerHTML = "";
+    visibleQuests.forEach((quest) => {
+      elements.questCardsGrid.appendChild(createQuestCard(quest));
+    });
+
+    const completedCount = state.quests.filter((quest) => isQuestCompleted(quest.id)).length;
+    elements.questVisibleCount.textContent = `${visibleQuests.length} ${visibleQuests.length === 1 ? "quest exibida" : "quests exibidas"}`;
+    elements.questProgressSummary.textContent = `${completedCount} de ${state.quests.length} completas`;
+    elements.questEmptyState.hidden = visibleQuests.length > 0;
   }
 
   function renderSummary(summaryItems) {
@@ -306,9 +424,77 @@
     render();
   }
 
+  function handleQuestFilterClick(filter, isMultiSelect) {
+    if (!isMultiSelect || filter === "all") {
+      state.questFilters = new Set([filter]);
+      updateQuestFilterButtons();
+      render();
+      return;
+    }
+
+    state.questFilters.delete("all");
+
+    if (state.questFilters.has(filter)) {
+      state.questFilters.delete(filter);
+    } else {
+      state.questFilters.add(filter);
+    }
+
+    if (state.questFilters.size === 0) {
+      state.questFilters.add("all");
+    }
+
+    updateQuestFilterButtons();
+    render();
+  }
+
   function updateFilterButtons() {
     elements.filterButtons.forEach((button) => {
       button.classList.toggle("active", state.filters.has(button.dataset.filter));
+    });
+  }
+
+  function updateQuestFilterButtons() {
+    elements.questFilterButtons.forEach((button) => {
+      button.classList.toggle("active", state.questFilters.has(button.dataset.questFilter));
+    });
+  }
+
+  function populateTraderFilter() {
+    const selected = state.questTrader;
+    const traders = Array.from(new Set(state.quests.map((quest) => quest.trader).filter(Boolean))).sort();
+    elements.questTraderFilter.innerHTML = '<option value="all">Todos os traders</option>';
+
+    traders.forEach((trader) => {
+      const option = document.createElement("option");
+      option.value = trader;
+      option.textContent = trader;
+      elements.questTraderFilter.appendChild(option);
+    });
+
+    elements.questTraderFilter.value = traders.includes(selected) ? selected : "all";
+    state.questTrader = elements.questTraderFilter.value;
+  }
+
+  function matchesQuestView(quest) {
+    const completed = isQuestCompleted(quest.id);
+    const searchTarget = [
+      quest.name,
+      quest.trader,
+      quest.requiredItems.map((item) => `${item.name} ${item.shortName}`).join(" ")
+    ].join(" ").toLowerCase();
+    const matchesSearch = !state.questSearch || searchTarget.includes(state.questSearch);
+    const matchesTrader = state.questTrader === "all" || quest.trader === state.questTrader;
+
+    if (!matchesSearch || !matchesTrader) return false;
+
+    return Array.from(state.questFilters).every((filter) => {
+      if (filter === "all") return true;
+      if (filter === "pending") return !completed;
+      if (filter === "complete") return completed;
+      if (filter === "kappa") return quest.requiredForKappa;
+      if (filter === "non-kappa") return !quest.requiredForKappa;
+      return true;
     });
   }
 
@@ -363,6 +549,7 @@
 
   function createCard(item) {
     const collected = getCollected(item);
+    const questCollected = getQuestContribution(item.id);
     const contextUsages = getContextUsages(item);
     const contextRequired = sumItemUsages(contextUsages);
     const contextCollected = Math.min(collected, contextRequired);
@@ -390,7 +577,7 @@
         <span class="badge ${complete ? "done" : ""}">${complete ? "Completo" : "Pendente"}</span>
       </div>
       <div class="card-counter">
-        <button class="counter-button" type="button" data-action="decrease" aria-label="Diminuir" ${collected <= 0 ? "disabled" : ""}>-</button>
+        <button class="counter-button" type="button" data-action="decrease" aria-label="Diminuir" ${collected <= questCollected ? "disabled" : ""}>-</button>
         <div class="counter-value">
           <strong>${contextCollected}/${contextRequired}</strong>
           <span>${remaining} restante${remaining === 1 ? "" : "s"}</span>
@@ -410,7 +597,7 @@
     });
 
     card.querySelector('[data-action="decrease"]').addEventListener("click", (event) => {
-      setCollected(item.id, event.shiftKey ? 0 : collected - 1);
+      setCollected(item.id, event.shiftKey ? questCollected : collected - 1);
     });
 
     card.querySelector('[data-action="increase"]').addEventListener("click", (event) => {
@@ -422,6 +609,102 @@
     });
 
     return card;
+  }
+
+  function createQuestCard(quest) {
+    const completed = isQuestCompleted(quest.id);
+    const card = document.createElement("article");
+
+    card.className = `quest-card ${completed ? "complete" : "pending"}`;
+    card.innerHTML = `
+      <div class="quest-card-header">
+        <div class="quest-trader-image">
+          ${quest.traderImage ? `<img src="${escapeAttribute(quest.traderImage)}" alt="${escapeAttribute(quest.trader || "Trader")}" loading="lazy">` : "<span>?</span>"}
+        </div>
+        <div class="quest-title-block">
+          <h3>${escapeHtml(quest.name)}</h3>
+          <p>${escapeHtml(quest.trader || "Trader não informado")}</p>
+        </div>
+      </div>
+      <div class="badge-row">
+        <span class="badge quest">${completed ? "Completa" : "Pendente"}</span>
+        ${quest.requiredForKappa ? '<span class="badge kappa">Kappa</span>' : '<span class="badge non-kappa">Não Kappa</span>'}
+        ${quest.minPlayerLevel ? `<span class="badge">Nível ${quest.minPlayerLevel}</span>` : ""}
+        <span class="badge">${quest.itemCount} item${quest.itemCount === 1 ? "" : "s"}</span>
+      </div>
+      <div class="quest-actions">
+        <button class="${completed ? "ghost-button" : "primary-button"}" type="button" data-action="toggle-quest">
+          ${completed ? "Desmarcar como completa" : "Marcar como completa"}
+        </button>
+        ${quest.wikiLink ? `<a class="quest-link" href="${escapeAttribute(quest.wikiLink)}" target="_blank" rel="noreferrer">Wiki</a>` : ""}
+      </div>
+      <details class="quest-items-details">
+        <summary>Itens exigidos (${quest.requiredItems.length})</summary>
+        <div class="quest-required-items">
+          ${quest.requiredItems.length > 0 ? quest.requiredItems.map(renderQuestRequiredItem).join("") : '<p class="muted-text">Esta quest não tem entrega de item rastreável.</p>'}
+        </div>
+      </details>
+    `;
+
+    card.querySelector('[data-action="toggle-quest"]').addEventListener("click", () => {
+      toggleQuestCompletion(quest);
+    });
+
+    return card;
+  }
+
+  function renderQuestRequiredItem(item) {
+    return `
+      <div class="quest-required-item">
+        <div class="quest-required-image">
+          ${item.icon ? `<img src="${escapeAttribute(item.icon)}" alt="${escapeAttribute(item.name)}" loading="lazy">` : "<span>?</span>"}
+        </div>
+        <div>
+          <strong>${escapeHtml(item.name)}</strong>
+          <div class="use-tags">
+            <span class="use-tag">x${Number(item.quantity || 0)}</span>
+            <span class="use-tag">${item.foundInRaid ? "FIR" : "Não FIR"}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function isQuestCompleted(questId) {
+    return Boolean(state.progress.questProgress[questId] && state.progress.questProgress[questId].completed);
+  }
+
+  function toggleQuestCompletion(quest) {
+    if (isQuestCompleted(quest.id)) {
+      delete state.progress.questProgress[quest.id];
+    } else {
+      state.progress.questProgress[quest.id] = {
+        completed: true,
+        appliedItems: getQuestAppliedItems(quest)
+      };
+    }
+
+    saveProgress();
+    render();
+  }
+
+  function getQuestAppliedItems(quest) {
+    const appliedItems = {};
+
+    quest.requiredItems.forEach((requiredItem) => {
+      const item = state.items.find((entry) => entry.id === requiredItem.itemId);
+      if (!item) return;
+
+      const alreadyFromQuests = getQuestContribution(requiredItem.itemId);
+      const available = Math.max(item.totalRequired - alreadyFromQuests, 0);
+      const quantity = Math.min(Number(requiredItem.quantity) || 0, available);
+
+      if (quantity > 0) {
+        appliedItems[requiredItem.itemId] = (appliedItems[requiredItem.itemId] || 0) + quantity;
+      }
+    });
+
+    return appliedItems;
   }
 
   function openUsageModal(item, usages) {
@@ -495,7 +778,7 @@
 
   function exportProgress() {
     const payload = {
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       progress: state.progress
     };
@@ -517,12 +800,18 @@
     reader.onload = () => {
       try {
         const imported = JSON.parse(reader.result);
-        const progress = imported.progress && typeof imported.progress === "object" ? imported.progress : imported;
-        const nextProgress = { ...state.progress };
+        const progress = normalizeProgress(imported.progress && typeof imported.progress === "object" ? imported.progress : imported);
+        const nextProgress = normalizeProgress(state.progress);
 
         state.items.forEach((item) => {
-          if (Object.prototype.hasOwnProperty.call(progress, item.id)) {
-            nextProgress[item.id] = clamp(Number(progress[item.id]) || 0, 0, item.totalRequired);
+          if (Object.prototype.hasOwnProperty.call(progress.manualProgress, item.id)) {
+            nextProgress.manualProgress[item.id] = clamp(Number(progress.manualProgress[item.id]) || 0, 0, item.totalRequired);
+          }
+        });
+
+        Object.entries(progress.questProgress).forEach(([questId, questState]) => {
+          if (questState && questState.completed && questState.appliedItems) {
+            nextProgress.questProgress[questId] = questState;
           }
         });
 

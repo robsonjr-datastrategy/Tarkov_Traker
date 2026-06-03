@@ -1,1 +1,2 @@
 window.TARKOV_ITEMS = window.TARKOV_GENERATED_ITEMS || [];
+window.TARKOV_QUESTS = window.TARKOV_GENERATED_QUESTS || [];

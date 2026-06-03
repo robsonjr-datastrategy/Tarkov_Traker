@@ -20,6 +20,8 @@ O tracker agrupa os itens reais do jogo por ID, soma a quantidade total necessar
 - Barra de progresso geral
 - Resumo de totais no topo
 - Pop-up com detalhes de uso, trader, hideout e requisitos
+- Aba de quests com busca, filtros, trader, Kappa e itens exigidos
+- Marcacao de quest completa com aplicacao automatica dos itens entregues
 - Exportacao e importacao de progresso em JSON
 - Atualizacao da base via API GraphQL publica do tarkov.dev
 - Fallback offline com `items.generated.js`
@@ -52,6 +54,24 @@ Se a API estiver indisponivel, o app usa:
 ## Privacidade
 
 Todo o progresso fica somente no `localStorage` do navegador. O projeto nao cria conta de usuario, nao sincroniza dados online e nao usa banco de dados.
+
+O progresso e salvo separando coleta manual de progresso vindo de quests completas:
+
+```js
+{
+  manualProgress: {
+    [itemId]: number
+  },
+  questProgress: {
+    [questId]: {
+      completed: true,
+      appliedItems: {
+        [itemId]: quantity
+      }
+    }
+  }
+}
+```
 
 ## Fonte dos dados
 

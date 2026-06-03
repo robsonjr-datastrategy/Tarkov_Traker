@@ -6,6 +6,7 @@
       tasks {
         id
         name
+        minPlayerLevel
         kappaRequired
         trader {
           name

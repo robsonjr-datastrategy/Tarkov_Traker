@@ -22,6 +22,12 @@
   </header>
 
   <main class="app-shell">
+    <nav class="view-tabs" aria-label="Áreas do tracker">
+      <button class="tab-button active" type="button" data-view="items">Itens</button>
+      <button class="tab-button" type="button" data-view="quests">Quests</button>
+    </nav>
+
+    <section id="itemsView">
     <section class="summary-grid" aria-label="Resumo do progresso">
       <article class="summary-card">
         <span>Total geral</span>
@@ -117,6 +123,47 @@
     </section>
 
     <p id="emptyState" class="empty-state" hidden>Nenhum item encontrado com os filtros atuais.</p>
+    </section>
+
+    <section id="questsView" hidden>
+      <section class="controls-panel" aria-label="Controles de quests">
+        <label class="search-field">
+          <span>Buscar quest ou trader</span>
+          <input id="questSearchInput" type="search" placeholder="Ex.: Shortage, Prapor, Collector">
+        </label>
+
+        <div>
+          <div class="filter-group quest-filter-group" role="group" aria-label="Filtros de quests">
+            <button class="quest-filter-button active" type="button" data-quest-filter="all">Todas</button>
+            <button class="quest-filter-button" type="button" data-quest-filter="pending">Pendentes</button>
+            <button class="quest-filter-button" type="button" data-quest-filter="complete">Completas</button>
+            <button class="quest-filter-button" type="button" data-quest-filter="kappa">Kappa</button>
+            <button class="quest-filter-button" type="button" data-quest-filter="non-kappa">Não Kappa</button>
+          </div>
+          <label class="select-field">
+            <span>Trader</span>
+            <select id="questTraderFilter">
+              <option value="all">Todos os traders</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section class="status-row" aria-live="polite">
+        <span id="questVisibleCount">0 quests exibidas</span>
+        <span id="questProgressSummary">0 completas</span>
+      </section>
+
+      <section class="item-section">
+        <div class="section-heading">
+          <h2>Quests</h2>
+          <span>Marque missões completas para aplicar os itens entregues</span>
+        </div>
+        <div id="questCardsGrid" class="quest-cards-grid"></div>
+      </section>
+
+      <p id="questEmptyState" class="empty-state" hidden>Nenhuma quest encontrada com os filtros atuais.</p>
+    </section>
   </main>
 
   <div id="usageModal" class="modal-backdrop" hidden>
