@@ -145,18 +145,21 @@
   function normalizeLoadedItems(items) {
     return items.map((item) => {
       const usages = condenseLoadedUsages(Array.isArray(item.usages) ? item.usages : []);
+      const sanitizedUsages = usages.map(sanitizeUsageText);
       const totalRequired = usages.reduce((sum, usage) => sum + Number(usage.quantity || 0), 0);
 
       return {
         ...item,
+        name: sanitizeDisplayText(item.name),
+        shortName: sanitizeDisplayText(item.shortName),
         totalRequired,
         collected: 0,
         remaining: totalRequired,
-        requiredForQuest: usages.some((usage) => usage.type === "quest"),
-        requiredForHideout: usages.some((usage) => usage.type === "hideout"),
-        requiredForKappa: usages.some((usage) => usage.requiredForKappa),
-        foundInRaidRequired: usages.some((usage) => usage.foundInRaid),
-        usages
+        requiredForQuest: sanitizedUsages.some((usage) => usage.type === "quest"),
+        requiredForHideout: sanitizedUsages.some((usage) => usage.type === "hideout"),
+        requiredForKappa: sanitizedUsages.some((usage) => usage.requiredForKappa),
+        foundInRaidRequired: sanitizedUsages.some((usage) => usage.foundInRaid),
+        usages: sanitizedUsages
       };
     }).sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -164,18 +167,41 @@
   function normalizeLoadedQuests(quests) {
     return quests.map((quest) => ({
       ...quest,
-      requiredItems: condenseLoadedRequiredItems(Array.isArray(quest.requiredItems) ? quest.requiredItems : [])
+      name: sanitizeDisplayText(quest.name),
+      trader: sanitizeDisplayText(quest.trader),
+      requiredItems: condenseLoadedRequiredItems(Array.isArray(quest.requiredItems) ? quest.requiredItems : []).map(sanitizeRequiredItemText)
     })).sort((a, b) => a.name.localeCompare(b.name));
   }
 
   function normalizeLoadedHideoutUpgrades(upgrades) {
     return upgrades.map((upgrade) => ({
       ...upgrade,
-      requiredItems: Array.isArray(upgrade.requiredItems) ? upgrade.requiredItems : []
+      stationName: sanitizeDisplayText(upgrade.stationName),
+      requiredItems: (Array.isArray(upgrade.requiredItems) ? upgrade.requiredItems : []).map(sanitizeRequiredItemText)
     })).sort((a, b) => {
       const stationOrder = a.stationName.localeCompare(b.stationName);
       return stationOrder === 0 ? a.level - b.level : stationOrder;
     });
+  }
+
+  function sanitizeUsageText(usage) {
+    return {
+      ...usage,
+      questName: sanitizeDisplayText(usage.questName),
+      trader: sanitizeDisplayText(usage.trader),
+      stationName: sanitizeDisplayText(usage.stationName),
+      objectiveDescription: sanitizeDisplayText(usage.objectiveDescription),
+      description: sanitizeDisplayText(usage.description)
+    };
+  }
+
+  function sanitizeRequiredItemText(item) {
+    return {
+      ...item,
+      name: sanitizeDisplayText(item.name),
+      shortName: sanitizeDisplayText(item.shortName),
+      description: sanitizeDisplayText(item.description)
+    };
   }
 
   function condenseLoadedUsages(usages) {
@@ -1357,7 +1383,7 @@
   }
 
   function escapeHtml(value) {
-    return String(value || "")
+    return sanitizeDisplayText(value)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
@@ -1367,5 +1393,24 @@
 
   function escapeAttribute(value) {
     return escapeHtml(value).replace(/`/g, "&#096;");
+  }
+
+  function sanitizeDisplayText(value) {
+    const text = String(value || "");
+    if (!/[\u00c2\u00c3\u00e2][\u0080-\u00bf]/.test(text)) return text;
+
+    try {
+      const bytes = Array.from(text).map((char) => {
+        const code = char.charCodeAt(0);
+        if (code <= 255) {
+          return `%${code.toString(16).padStart(2, "0")}`;
+        }
+        return encodeURIComponent(char);
+      }).join("");
+
+      return decodeURIComponent(bytes);
+    } catch {
+      return text;
+    }
   }
 })();
