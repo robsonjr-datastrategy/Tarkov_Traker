@@ -886,11 +886,7 @@
         </div>
         <button class="counter-button" type="button" data-action="increase" aria-label="Aumentar" ${collected >= item.totalRequired ? "disabled" : ""}>+</button>
       </div>
-      <div class="meta-row">
-        <span>Total no filtro: ${contextRequired}</span>
-        <span>${contextUsages.length} uso${contextUsages.length === 1 ? "" : "s"}</span>
-      </div>
-      <button class="usage-button" type="button" data-action="open-usages">Ver usos (${contextUsages.length})</button>
+      <button class="usage-button" type="button" data-action="open-usages">Ver usos</button>
     `;
 
     card.addEventListener("click", (event) => {
@@ -1205,6 +1201,7 @@
 
   function renderUse(use) {
     const typeLabel = use.type === "hideout" ? "Hideout" : "Quest";
+    const completed = isUsageCompleted(use);
     const title = use.type === "hideout"
       ? `${use.stationName || "Hideout"} nível ${use.level || "?"}`
       : `${use.questName || "Quest"} - ${use.trader || "Trader"}`;
@@ -1224,12 +1221,26 @@
           <span class="use-tag">x${Number(use.quantity || 0)}</span>
           <span class="use-tag">${use.foundInRaid ? "FIR" : "Não FIR"}</span>
           ${use.requiredForKappa ? '<span class="use-tag kappa">Kappa</span>' : '<span class="use-tag">Não Kappa</span>'}
+          ${completed ? '<span class="use-tag completed">&#10003; Concluido</span>' : ""}
         </div>
         <div class="use-title">${escapeHtml(title)} ${link}</div>
         ${alternatives}
         </div>
       </article>
     `;
+  }
+
+  function isUsageCompleted(use) {
+    if (use.type === "quest") {
+      return Boolean(use.questId && isQuestCompleted(use.questId));
+    }
+
+    return state.hideoutUpgrades.some((upgrade) => {
+      const sameStation = use.stationId
+        ? upgrade.stationId === use.stationId
+        : upgrade.stationName === use.stationName;
+      return sameStation && Number(upgrade.level) === Number(use.level) && isHideoutCompleted(upgrade.id);
+    });
   }
 
   function renderUsageImage(use) {
