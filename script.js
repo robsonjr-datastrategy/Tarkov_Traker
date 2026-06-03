@@ -481,6 +481,39 @@
     return clamp(manual + automatic, 0, item.totalRequired);
   }
 
+  function getManualContribution(itemId) {
+    return Number(state.progress.manualProgress[itemId]) || 0;
+  }
+
+  function getContextCollected(item, usages) {
+    const contextUsages = Array.isArray(usages) ? usages : getContextUsages(item);
+    const contextRequired = sumItemUsages(contextUsages);
+    const manual = getManualContribution(item.id);
+    const automatic = getContextAutomaticContribution(item.id, contextUsages);
+    return clamp(manual + automatic, 0, contextRequired);
+  }
+
+  function getContextAutomaticContribution(itemId, usages) {
+    return (Array.isArray(usages) ? usages : []).reduce((sum, usage) => {
+      if (!isUsageCompleted(usage)) return sum;
+      const applied = getAppliedQuantityForUsage(itemId, usage);
+      const required = Number(usage.quantity || 0);
+      return sum + Math.min(applied, required);
+    }, 0);
+  }
+
+  function getAppliedQuantityForUsage(itemId, usage) {
+    if (usage.type === "quest" && usage.questId) {
+      const questState = state.progress.questProgress[usage.questId];
+      return Number(questState && questState.appliedItems && questState.appliedItems[itemId]) || 0;
+    }
+
+    const upgrade = findHideoutUpgradeForUsage(usage);
+    if (!upgrade) return 0;
+    const upgradeState = state.progress.hideoutProgress[upgrade.id];
+    return Number(upgradeState && upgradeState.appliedItems && upgradeState.appliedItems[itemId]) || 0;
+  }
+
   function getAutomaticContribution(itemId) {
     return getQuestContribution(itemId) + getHideoutContribution(itemId);
   }
@@ -566,7 +599,7 @@
   function renderSummary(summaryItems) {
     const totalRequired = sumContextUsages(summaryItems);
     const totalCollected = summaryItems.reduce((sum, item) => {
-      return sum + Math.min(getCollected(item), sumItemUsages(getContextUsages(item)));
+      return sum + getContextCollected(item);
     }, 0);
     const totalRemaining = totalRequired - totalCollected;
     const percent = totalRequired === 0 ? 0 : Math.round((totalCollected / totalRequired) * 100);
@@ -577,7 +610,7 @@
       const firRequired = getContextUsages(item)
         .filter((use) => use.foundInRaid)
         .reduce((usageSum, usage) => usageSum + Number(usage.quantity || 0), 0);
-      return sum + Math.max(firRequired - getCollected(item), 0);
+      return sum + Math.max(firRequired - getContextCollected(item, getContextUsages(item).filter((use) => use.foundInRaid)), 0);
     }, 0);
 
     elements.totalRequired.textContent = totalRequired;
@@ -614,9 +647,10 @@
   }
 
   function matchesCurrentView(item) {
-    const collected = getCollected(item);
-    const contextRequired = sumItemUsages(getContextUsages(item));
-    const isComplete = contextRequired > 0 && Math.min(collected, contextRequired) >= contextRequired;
+    const contextUsages = getContextUsages(item);
+    const contextRequired = sumItemUsages(contextUsages);
+    const contextCollected = getContextCollected(item, contextUsages);
+    const isComplete = contextRequired > 0 && contextCollected >= contextRequired;
     const searchTarget = [
       item.name,
       item.shortName,
@@ -854,7 +888,7 @@
     const questCollected = getQuestContribution(item.id);
     const contextUsages = getContextUsages(item);
     const contextRequired = sumItemUsages(contextUsages);
-    const contextCollected = Math.min(collected, contextRequired);
+    const contextCollected = getContextCollected(item, contextUsages);
     const remaining = contextRequired - contextCollected;
     const complete = contextRequired > 0 && contextCollected >= contextRequired;
     const card = document.createElement("article");
@@ -1235,11 +1269,16 @@
       return Boolean(use.questId && isQuestCompleted(use.questId));
     }
 
-    return state.hideoutUpgrades.some((upgrade) => {
+    const upgrade = findHideoutUpgradeForUsage(use);
+    return Boolean(upgrade && isHideoutCompleted(upgrade.id));
+  }
+
+  function findHideoutUpgradeForUsage(use) {
+    return state.hideoutUpgrades.find((upgrade) => {
       const sameStation = use.stationId
         ? upgrade.stationId === use.stationId
         : upgrade.stationName === use.stationName;
-      return sameStation && Number(upgrade.level) === Number(use.level) && isHideoutCompleted(upgrade.id);
+      return sameStation && Number(upgrade.level) === Number(use.level);
     });
   }
 
