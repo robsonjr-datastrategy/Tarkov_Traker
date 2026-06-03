@@ -1,0 +1,498 @@
+(function () {
+  const STORAGE_KEY = "tarkovFirTrackerProgress";
+  const BASE_CACHE_KEY = "tarkovFirTrackerBase";
+  const BASE_DATA_VERSION = 5;
+
+  const state = {
+    items: [],
+    progress: {},
+    filters: new Set(["all"]),
+    search: "",
+    loading: false
+  };
+
+  const elements = {
+    totalRequired: document.getElementById("totalRequired"),
+    totalCollected: document.getElementById("totalCollected"),
+    totalRemaining: document.getElementById("totalRemaining"),
+    totalPercent: document.getElementById("totalPercent"),
+    questRequired: document.getElementById("questRequired"),
+    hideoutRequired: document.getElementById("hideoutRequired"),
+    kappaRequired: document.getElementById("kappaRequired"),
+    firRemaining: document.getElementById("firRemaining"),
+    progressLabel: document.getElementById("progressLabel"),
+    progressFill: document.getElementById("progressFill"),
+    dataSource: document.getElementById("dataSource"),
+    searchInput: document.getElementById("searchInput"),
+    filterButtons: document.querySelectorAll(".filter-button"),
+    visibleCount: document.getElementById("visibleCount"),
+    saveState: document.getElementById("saveState"),
+    refreshBaseBtn: document.getElementById("refreshBaseBtn"),
+    resetBtn: document.getElementById("resetBtn"),
+    exportBtn: document.getElementById("exportBtn"),
+    importBtn: document.getElementById("importBtn"),
+    importFile: document.getElementById("importFile"),
+    sharedSection: document.getElementById("sharedSection"),
+    questSection: document.getElementById("questSection"),
+    hideoutSection: document.getElementById("hideoutSection"),
+    sharedGrid: document.getElementById("sharedGrid"),
+    questGrid: document.getElementById("questGrid"),
+    hideoutGrid: document.getElementById("hideoutGrid"),
+    emptyState: document.getElementById("emptyState"),
+    usageModal: document.getElementById("usageModal"),
+    usageModalTitle: document.getElementById("usageModalTitle"),
+    modalItemIcon: document.getElementById("modalItemIcon"),
+    modalUsageList: document.getElementById("modalUsageList"),
+    closeUsageModal: document.getElementById("closeUsageModal")
+  };
+
+  loadProgress();
+  loadInitialBase();
+  bindEvents();
+  render();
+
+  function loadInitialBase() {
+    const cached = loadCachedBase();
+    const fallback = normalizeLoadedItems(window.TARKOV_ITEMS || []);
+
+    if (cached.length > 0) {
+      state.items = cached;
+      elements.dataSource.textContent = `Base salva no navegador carregada (${cached.length} itens).`;
+      return;
+    }
+
+    state.items = fallback;
+    elements.dataSource.textContent = `Base local carregada (${fallback.length} itens).`;
+  }
+
+  function loadCachedBase() {
+    try {
+      const cached = JSON.parse(localStorage.getItem(BASE_CACHE_KEY));
+      if (!cached || cached.version !== BASE_DATA_VERSION) return [];
+      return normalizeLoadedItems(cached && Array.isArray(cached.items) ? cached.items : []);
+    } catch {
+      return [];
+    }
+  }
+
+  function cacheBase(items) {
+    localStorage.setItem(BASE_CACHE_KEY, JSON.stringify({
+      version: BASE_DATA_VERSION,
+      savedAt: new Date().toISOString(),
+      items
+    }));
+  }
+
+  function normalizeLoadedItems(items) {
+    return items.map((item) => ({
+      ...item,
+      collected: 0,
+      remaining: item.totalRequired,
+      usages: Array.isArray(item.usages) ? item.usages : []
+    })).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function bindEvents() {
+    elements.searchInput.addEventListener("input", (event) => {
+      state.search = event.target.value.trim().toLowerCase();
+      render();
+    });
+
+    elements.filterButtons.forEach((button) => {
+      button.addEventListener("click", (event) => handleFilterClick(button.dataset.filter, event.ctrlKey || event.metaKey));
+    });
+
+    elements.refreshBaseBtn.addEventListener("click", refreshBase);
+    elements.resetBtn.addEventListener("click", resetProgress);
+    elements.exportBtn.addEventListener("click", exportProgress);
+    elements.importBtn.addEventListener("click", () => elements.importFile.click());
+    elements.importFile.addEventListener("change", importProgress);
+    elements.closeUsageModal.addEventListener("click", closeUsageModal);
+    elements.usageModal.addEventListener("click", (event) => {
+      if (event.target === elements.usageModal) closeUsageModal();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !elements.usageModal.hidden) closeUsageModal();
+    });
+  }
+
+  function loadProgress() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      state.progress = saved && typeof saved === "object" ? saved : {};
+    } catch {
+      state.progress = {};
+    }
+  }
+
+  function saveProgress() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.progress));
+    elements.saveState.textContent = "Salvo localmente";
+  }
+
+  async function refreshBase() {
+    if (!window.TarkovApi || !window.TarkovDataMapper) return;
+
+    setLoading(true);
+    elements.dataSource.textContent = "Consultando tarkov.dev...";
+
+    try {
+      const data = await window.TarkovApi.fetchTarkovBase();
+      const mappedItems = window.TarkovDataMapper.mapTarkovData(data);
+      state.items = normalizeLoadedItems(mappedItems);
+      cacheBase(state.items);
+      saveProgress();
+      render();
+      elements.dataSource.textContent = `Base atualizada via tarkov.dev (${state.items.length} itens). Progresso preservado.`;
+    } catch (error) {
+      console.error(error);
+      elements.dataSource.textContent = "API indisponível. Usando a base local/cache salva.";
+      window.alert("Não foi possível atualizar a base agora. O app continuará usando a base local ou salva.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function setLoading(isLoading) {
+    state.loading = isLoading;
+    elements.refreshBaseBtn.disabled = isLoading;
+    elements.refreshBaseBtn.textContent = isLoading ? "Atualizando..." : "Atualizar base Tarkov";
+  }
+
+  function resetProgress() {
+    const confirmed = window.confirm("Resetar todo o progresso salvo localmente?");
+    if (!confirmed) return;
+
+    state.progress = {};
+    saveProgress();
+    render();
+  }
+
+  function setCollected(itemId, amount) {
+    const item = state.items.find((entry) => entry.id === itemId);
+    if (!item) return;
+
+    const collected = clamp(Number(amount) || 0, 0, item.totalRequired);
+    state.progress[itemId] = collected;
+    saveProgress();
+    render();
+  }
+
+  function getCollected(item) {
+    return clamp(Number(state.progress[item.id]) || 0, 0, item.totalRequired);
+  }
+
+  function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+  }
+
+  function render() {
+    renderSummary();
+
+    const visibleItems = state.items.filter(matchesCurrentView);
+    const sharedItems = visibleItems.filter((item) => item.requiredForQuest && item.requiredForHideout);
+    const questItems = visibleItems.filter((item) => item.requiredForQuest && !item.requiredForHideout);
+    const hideoutItems = visibleItems.filter((item) => item.requiredForHideout && !item.requiredForQuest);
+
+    renderSection(elements.sharedGrid, elements.sharedSection, sharedItems);
+    renderSection(elements.questGrid, elements.questSection, questItems);
+    renderSection(elements.hideoutGrid, elements.hideoutSection, hideoutItems);
+
+    elements.visibleCount.textContent = `${visibleItems.length} ${visibleItems.length === 1 ? "item exibido" : "itens exibidos"}`;
+    elements.emptyState.hidden = visibleItems.length > 0;
+  }
+
+  function renderSummary() {
+    const totalRequired = sumUsages(state.items);
+    const totalCollected = state.items.reduce((sum, item) => sum + getCollected(item), 0);
+    const totalRemaining = totalRequired - totalCollected;
+    const percent = totalRequired === 0 ? 0 : Math.round((totalCollected / totalRequired) * 100);
+    const questRequired = sumUsages(state.items, (use) => use.type === "quest");
+    const hideoutRequired = sumUsages(state.items, (use) => use.type === "hideout");
+    const kappaRequired = sumUsages(state.items, (use) => use.requiredForKappa);
+    const firRemaining = state.items.reduce((sum, item) => {
+      const firRequired = item.usages
+        .filter((use) => use.foundInRaid)
+        .reduce((usageSum, usage) => usageSum + Number(usage.quantity || 0), 0);
+      return sum + Math.max(firRequired - getCollected(item), 0);
+    }, 0);
+
+    elements.totalRequired.textContent = totalRequired;
+    elements.totalCollected.textContent = totalCollected;
+    elements.totalRemaining.textContent = totalRemaining;
+    elements.totalPercent.textContent = `${percent}%`;
+    elements.questRequired.textContent = questRequired;
+    elements.hideoutRequired.textContent = hideoutRequired;
+    elements.kappaRequired.textContent = kappaRequired;
+    elements.firRemaining.textContent = firRemaining;
+    elements.progressLabel.textContent = `${totalCollected} de ${totalRequired}`;
+    elements.progressFill.style.width = `${percent}%`;
+  }
+
+  function sumUsages(items, predicate) {
+    return items.reduce((sum, item) => {
+      if (!predicate) return sum + item.totalRequired;
+      return sum + item.usages
+        .filter(predicate)
+        .reduce((usageSum, usage) => usageSum + Number(usage.quantity || 0), 0);
+    }, 0);
+  }
+
+  function matchesCurrentView(item) {
+    const collected = getCollected(item);
+    const isComplete = collected >= item.totalRequired;
+    const searchTarget = [
+      item.name,
+      item.shortName,
+      item.usages.map((use) => [
+        use.questName,
+        use.trader,
+        use.stationName,
+        use.level,
+        use.type
+      ].join(" ")).join(" ")
+    ].join(" ").toLowerCase();
+    const matchesSearch = !state.search || searchTarget.includes(state.search);
+
+    if (!matchesSearch) return false;
+    return Array.from(state.filters).every((filter) => matchesFilter(item, filter, isComplete));
+  }
+
+  function handleFilterClick(filter, isMultiSelect) {
+    if (!isMultiSelect || filter === "all") {
+      state.filters = new Set([filter]);
+      updateFilterButtons();
+      render();
+      return;
+    }
+
+    state.filters.delete("all");
+
+    if (state.filters.has(filter)) {
+      state.filters.delete(filter);
+    } else {
+      state.filters.add(filter);
+    }
+
+    if (state.filters.size === 0) {
+      state.filters.add("all");
+    }
+
+    updateFilterButtons();
+    render();
+  }
+
+  function updateFilterButtons() {
+    elements.filterButtons.forEach((button) => {
+      button.classList.toggle("active", state.filters.has(button.dataset.filter));
+    });
+  }
+
+  function matchesFilter(item, filter, isComplete) {
+    if (filter === "all") return true;
+    if (filter === "pending") return !isComplete;
+    if (filter === "complete") return isComplete;
+    if (filter === "quest") return item.requiredForQuest;
+    if (filter === "hideout") return item.requiredForHideout;
+    if (filter === "kappa") return item.requiredForKappa;
+    if (filter === "non-kappa") {
+      return item.usages.some((use) => use.type === "quest" && !use.requiredForKappa);
+    }
+    if (filter === "fir") return item.foundInRaidRequired;
+    if (filter === "non-fir") return !item.foundInRaidRequired;
+    return true;
+  }
+
+  function renderSection(grid, section, sectionItems) {
+    grid.innerHTML = "";
+    section.hidden = sectionItems.length === 0;
+    sectionItems.forEach((item) => grid.appendChild(createCard(item)));
+  }
+
+  function createCard(item) {
+    const collected = getCollected(item);
+    const remaining = item.totalRequired - collected;
+    const complete = collected >= item.totalRequired;
+    const card = document.createElement("article");
+
+    card.className = `item-card ${complete ? "complete" : "pending"}`;
+    card.innerHTML = `
+      <div class="card-top">
+        <a class="item-image-link" href="${escapeAttribute(item.wikiLink || "#")}" target="_blank" rel="noreferrer">
+          ${item.icon ? `<img src="${escapeAttribute(item.icon)}" alt="${escapeAttribute(item.name)}" loading="lazy">` : "<span>?</span>"}
+        </a>
+        <div class="card-title-block">
+          <h3>${escapeHtml(item.name)}</h3>
+          <p>${escapeHtml(item.shortName || item.id)}</p>
+        </div>
+      </div>
+      <div class="badge-row">
+        ${item.requiredForQuest ? '<span class="badge quest">Quest</span>' : ""}
+        ${item.requiredForHideout ? '<span class="badge hideout">Hideout</span>' : ""}
+        ${item.requiredForKappa ? '<span class="badge kappa">Kappa</span>' : ""}
+        ${hasNonKappaQuestUsage(item) ? '<span class="badge non-kappa">Não Kappa</span>' : ""}
+        ${item.foundInRaidRequired ? '<span class="badge fir">Find in Raid</span>' : '<span class="badge">Não FIR</span>'}
+        <span class="badge ${complete ? "done" : ""}">${complete ? "Completo" : "Pendente"}</span>
+      </div>
+      <div class="card-counter">
+        <button class="counter-button" type="button" data-action="decrease" aria-label="Diminuir" ${collected <= 0 ? "disabled" : ""}>-</button>
+        <div class="counter-value">
+          <strong>${collected}/${item.totalRequired}</strong>
+          <span>${remaining} restante${remaining === 1 ? "" : "s"}</span>
+        </div>
+        <button class="counter-button" type="button" data-action="increase" aria-label="Aumentar" ${collected >= item.totalRequired ? "disabled" : ""}>+</button>
+      </div>
+      <div class="meta-row">
+        <span>Total necessário: ${item.totalRequired}</span>
+        <span>${item.usages.length} uso${item.usages.length === 1 ? "" : "s"}</span>
+      </div>
+      <button class="usage-button" type="button" data-action="open-usages">Ver usos (${item.usages.length})</button>
+    `;
+
+    card.addEventListener("click", (event) => {
+      if (!event.shiftKey || event.target.closest("button, a")) return;
+      setCollected(item.id, item.totalRequired);
+    });
+
+    card.querySelector('[data-action="decrease"]').addEventListener("click", (event) => {
+      setCollected(item.id, event.shiftKey ? 0 : collected - 1);
+    });
+
+    card.querySelector('[data-action="increase"]').addEventListener("click", (event) => {
+      setCollected(item.id, event.shiftKey ? item.totalRequired : collected + 1);
+    });
+
+    card.querySelector('[data-action="open-usages"]').addEventListener("click", () => {
+      openUsageModal(item);
+    });
+
+    return card;
+  }
+
+  function openUsageModal(item) {
+    elements.usageModalTitle.textContent = item.name;
+    elements.modalUsageList.innerHTML = item.usages.map(renderUse).join("");
+
+    if (item.icon) {
+      elements.modalItemIcon.src = item.icon;
+      elements.modalItemIcon.alt = item.name;
+      elements.modalItemIcon.hidden = false;
+    } else {
+      elements.modalItemIcon.removeAttribute("src");
+      elements.modalItemIcon.hidden = true;
+    }
+
+    elements.usageModal.hidden = false;
+    document.body.classList.add("modal-open");
+    elements.closeUsageModal.focus();
+  }
+
+  function closeUsageModal() {
+    elements.usageModal.hidden = true;
+    document.body.classList.remove("modal-open");
+  }
+
+  function renderUse(use) {
+    const typeLabel = use.type === "hideout" ? "Hideout" : "Quest";
+    const title = use.type === "hideout"
+      ? `${use.stationName || "Hideout"} nível ${use.level || "?"}`
+      : `${use.questName || "Quest"} - ${use.trader || "Trader"}`;
+    const link = use.wikiLink ? `<a href="${escapeAttribute(use.wikiLink)}" target="_blank" rel="noreferrer">Wiki</a>` : "";
+    const alternatives = Array.isArray(use.alternativeItems) && use.alternativeItems.length > 1
+      ? `<small>Aceita alternativas: ${escapeHtml(use.alternativeItems.slice(0, 6).map((item) => item.shortName || item.name).join(", "))}${use.alternativeItems.length > 6 ? "..." : ""}</small>`
+      : "";
+
+    return `
+      <article class="usage-row">
+        <div class="usage-media">
+          ${renderUsageImage(use)}
+        </div>
+        <div class="usage-content">
+        <div class="use-tags">
+          <span class="use-tag">${typeLabel}</span>
+          <span class="use-tag">x${Number(use.quantity || 0)}</span>
+          <span class="use-tag">${use.foundInRaid ? "FIR" : "Não FIR"}</span>
+          ${use.requiredForKappa ? '<span class="use-tag kappa">Kappa</span>' : '<span class="use-tag">Não Kappa</span>'}
+        </div>
+        <div class="use-title">${escapeHtml(title)} ${link}</div>
+        ${alternatives}
+        </div>
+      </article>
+    `;
+  }
+
+  function renderUsageImage(use) {
+    if (use.type === "quest" && use.traderImage) {
+      return `<img src="${escapeAttribute(use.traderImage)}" alt="${escapeAttribute(use.trader || "Trader")}" loading="lazy">`;
+    }
+
+    if (use.type === "hideout" && use.stationImage) {
+      return `<img src="${escapeAttribute(use.stationImage)}" alt="${escapeAttribute(use.stationName || "Hideout")}" loading="lazy">`;
+    }
+
+    return `<div class="usage-placeholder">${use.type === "hideout" ? "H" : "Q"}</div>`;
+  }
+
+  function hasNonKappaQuestUsage(item) {
+    return item.usages.some((use) => use.type === "quest" && !use.requiredForKappa);
+  }
+
+  function exportProgress() {
+    const payload = {
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      progress: state.progress
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = "tarkov-progress.json";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importProgress(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const imported = JSON.parse(reader.result);
+        const progress = imported.progress && typeof imported.progress === "object" ? imported.progress : imported;
+        const nextProgress = { ...state.progress };
+
+        state.items.forEach((item) => {
+          if (Object.prototype.hasOwnProperty.call(progress, item.id)) {
+            nextProgress[item.id] = clamp(Number(progress[item.id]) || 0, 0, item.totalRequired);
+          }
+        });
+
+        state.progress = nextProgress;
+        saveProgress();
+        render();
+      } catch {
+        window.alert("Arquivo JSON inválido.");
+      } finally {
+        elements.importFile.value = "";
+      }
+    };
+
+    reader.readAsText(file);
+  }
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function escapeAttribute(value) {
+    return escapeHtml(value).replace(/`/g, "&#096;");
+  }
+})();

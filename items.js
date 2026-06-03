@@ -1,0 +1,1 @@
+window.TARKOV_ITEMS = window.TARKOV_GENERATED_ITEMS || [];

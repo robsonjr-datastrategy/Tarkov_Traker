@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tarkov FIR Tracker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">Escape from Tarkov</p>
+      <h1>Raid Items Tracker</h1>
+    </div>
+    <div class="header-actions">
+      <button id="refreshBaseBtn" class="primary-button" type="button">Atualizar base Tarkov</button>
+      <button id="exportBtn" class="ghost-button" type="button">Exportar JSON</button>
+      <button id="importBtn" class="ghost-button" type="button">Importar JSON</button>
+      <button id="resetBtn" class="danger-button" type="button">Resetar</button>
+      <input id="importFile" type="file" accept="application/json,.json" hidden>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <section class="summary-grid" aria-label="Resumo do progresso">
+      <article class="summary-card">
+        <span>Total geral</span>
+        <strong id="totalRequired">0</strong>
+      </article>
+      <article class="summary-card">
+        <span>Total coletado</span>
+        <strong id="totalCollected">0</strong>
+      </article>
+      <article class="summary-card">
+        <span>Total restante</span>
+        <strong id="totalRemaining">0</strong>
+      </article>
+      <article class="summary-card">
+        <span>Concluído</span>
+        <strong id="totalPercent">0%</strong>
+      </article>
+      <article class="summary-card">
+        <span>Necessário para quests</span>
+        <strong id="questRequired">0</strong>
+      </article>
+      <article class="summary-card">
+        <span>Necessário para hideout</span>
+        <strong id="hideoutRequired">0</strong>
+      </article>
+      <article class="summary-card">
+        <span>Necessário para Kappa</span>
+        <strong id="kappaRequired">0</strong>
+      </article>
+      <article class="summary-card">
+        <span>FIR restante</span>
+        <strong id="firRemaining">0</strong>
+      </article>
+    </section>
+
+    <section class="progress-panel" aria-label="Barra de progresso geral">
+      <div class="progress-line">
+        <span>Progresso geral</span>
+        <span id="progressLabel">0 de 0</span>
+      </div>
+      <div class="progress-track">
+        <div id="progressFill" class="progress-fill"></div>
+      </div>
+      <p id="dataSource" class="data-source">Base local carregada.</p>
+    </section>
+
+    <section class="controls-panel" aria-label="Controles de busca e filtros">
+      <label class="search-field">
+        <span>Buscar item, quest, trader ou estação</span>
+        <input id="searchInput" type="search" placeholder="Ex.: Salewa, Collector, Medstation, Mechanic">
+      </label>
+
+      <div class="filter-group" role="group" aria-label="Filtros">
+        <button class="filter-button active" type="button" data-filter="all">Todos</button>
+        <button class="filter-button" type="button" data-filter="pending">Pendentes</button>
+        <button class="filter-button" type="button" data-filter="complete">Completos</button>
+        <button class="filter-button" type="button" data-filter="quest">Quests</button>
+        <button class="filter-button" type="button" data-filter="hideout">Hideout</button>
+        <button class="filter-button" type="button" data-filter="kappa">Kappa</button>
+        <button class="filter-button" type="button" data-filter="non-kappa">Não Kappa</button>
+        <button class="filter-button" type="button" data-filter="fir">Find in Raid</button>
+        <button class="filter-button" type="button" data-filter="non-fir">Não Find in Raid</button>
+      </div>
+    </section>
+
+    <section class="status-row" aria-live="polite">
+      <span id="visibleCount">0 itens exibidos</span>
+      <span id="saveState">Salvo localmente</span>
+    </section>
+
+    <section id="sharedSection" class="item-section">
+      <div class="section-heading">
+        <h2>Itens compartilhados</h2>
+        <span>Quests e hideout</span>
+      </div>
+      <div id="sharedGrid" class="cards-grid"></div>
+    </section>
+
+    <section id="questSection" class="item-section">
+      <div class="section-heading">
+        <h2>Itens necessários para quests/missões</h2>
+        <span>Quest, trader, Kappa e FIR</span>
+      </div>
+      <div id="questGrid" class="cards-grid"></div>
+    </section>
+
+    <section id="hideoutSection" class="item-section">
+      <div class="section-heading">
+        <h2>Itens necessários para hideout</h2>
+        <span>Estação, nível e quantidade</span>
+      </div>
+      <div id="hideoutGrid" class="cards-grid"></div>
+    </section>
+
+    <p id="emptyState" class="empty-state" hidden>Nenhum item encontrado com os filtros atuais.</p>
+  </main>
+
+  <div id="usageModal" class="modal-backdrop" hidden>
+    <section class="usage-modal" role="dialog" aria-modal="true" aria-labelledby="usageModalTitle">
+      <div class="modal-header">
+        <div class="modal-item">
+          <img id="modalItemIcon" alt="" hidden>
+          <div>
+            <p class="eyebrow">Usos do item</p>
+            <h2 id="usageModalTitle">Item</h2>
+          </div>
+        </div>
+        <button id="closeUsageModal" class="icon-button" type="button" aria-label="Fechar">X</button>
+      </div>
+      <div id="modalUsageList" class="modal-usage-list"></div>
+    </section>
+  </div>
+
+  <script src="items.generated.js"></script>
+  <script src="items.js"></script>
+  <script src="dataMapper.js"></script>
+  <script src="tarkovApi.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
