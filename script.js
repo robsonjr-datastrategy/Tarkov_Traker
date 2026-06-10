@@ -1080,7 +1080,7 @@
           <strong>${escapeHtml(item.name)}</strong>
           <div class="use-tags">
             <span class="use-tag">x${Number(item.quantity || 0)}</span>
-            <span class="use-tag">Não FIR</span>
+            <span class="use-tag">${item.foundInRaid ? "FIR" : "Não FIR"}</span>
           </div>
         </div>
       </div>

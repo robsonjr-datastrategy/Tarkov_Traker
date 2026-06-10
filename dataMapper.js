@@ -57,7 +57,7 @@
             stationImage: station.imageLink || "",
             level: Number(level.level) || 0,
             quantity: Number(requirement.count) || 0,
-            foundInRaid: false,
+            foundInRaid: isRequirementFoundInRaid(requirement),
             requiredForKappa: false,
             requiredForHideoutProgression: true,
             wikiLink: item.wikiLink || ""
@@ -157,7 +157,7 @@
               icon: item.iconLink || "",
               wikiLink: item.wikiLink || "",
               quantity: Number(requirement.count) || 0,
-              foundInRaid: false
+              foundInRaid: isRequirementFoundInRaid(requirement)
             };
           })
           .filter(Boolean);
@@ -351,6 +351,13 @@
     const uniqueItemIds = new Set(items.map((item) => item && item.id).filter(Boolean));
 
     return Boolean(objective.item && uniqueItemIds.size > 1);
+  }
+
+  function isRequirementFoundInRaid(requirement) {
+    const attributes = Array.isArray(requirement.attributes) ? requirement.attributes : [];
+    const foundInRaidAttribute = attributes.find((attribute) => attribute && attribute.name === "foundInRaid");
+
+    return String(foundInRaidAttribute && foundInRaidAttribute.value).toLowerCase() === "true";
   }
 
   function normalizeAlternativeItems(items) {

@@ -45,6 +45,10 @@
           level
           itemRequirements {
             count
+            attributes {
+              name
+              value
+            }
             item {
               id
               name
