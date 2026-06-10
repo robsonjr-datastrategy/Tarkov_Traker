@@ -165,12 +165,63 @@
   }
 
   function normalizeLoadedQuests(quests) {
-    return quests.map((quest) => ({
-      ...quest,
-      name: sanitizeDisplayText(quest.name),
-      trader: sanitizeDisplayText(quest.trader),
-      requiredItems: condenseLoadedRequiredItems(Array.isArray(quest.requiredItems) ? quest.requiredItems : []).map(sanitizeRequiredItemText)
-    })).sort((a, b) => a.name.localeCompare(b.name));
+    const grouped = new Map();
+
+    quests.forEach((quest) => {
+      if (!quest) return;
+
+      const normalized = {
+        ...quest,
+        id: quest.id || getQuestDisplayKey(quest),
+        name: sanitizeDisplayText(quest.name),
+        trader: sanitizeDisplayText(quest.trader),
+        requiredItems: condenseLoadedRequiredItems(Array.isArray(quest.requiredItems) ? quest.requiredItems : []).map(sanitizeRequiredItemText)
+      };
+      normalized.itemCount = normalized.requiredItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+      const key = getQuestDisplayKey(normalized);
+      const existing = grouped.get(key);
+
+      if (!existing) {
+        grouped.set(key, {
+          ...normalized,
+          questIds: getUniqueIds([normalized.id].concat(normalized.questIds || []))
+        });
+        return;
+      }
+
+      existing.questIds = getUniqueIds(existing.questIds.concat(normalized.id, normalized.questIds || []));
+      existing.traderImage = existing.traderImage || normalized.traderImage;
+      existing.wikiLink = existing.wikiLink || normalized.wikiLink;
+      existing.minPlayerLevel = existing.minPlayerLevel || normalized.minPlayerLevel;
+      existing.requiredForKappa = Boolean(existing.requiredForKappa || normalized.requiredForKappa);
+      existing.requiredItems = condenseLoadedRequiredItems(existing.requiredItems.concat(normalized.requiredItems)).map(sanitizeRequiredItemText);
+      existing.itemCount = existing.requiredItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    });
+
+    return Array.from(grouped.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function getQuestDisplayKey(quest) {
+    return [
+      normalizeLoadedObjectiveDescription(quest.name),
+      normalizeLoadedObjectiveDescription(quest.trader),
+      Number(quest.minPlayerLevel) || ""
+    ].join("|");
+  }
+
+  function getUniqueIds(ids) {
+    const flattened = [];
+
+    ids.forEach((id) => {
+      if (Array.isArray(id)) {
+        flattened.push(...id);
+        return;
+      }
+
+      flattened.push(id);
+    });
+
+    return Array.from(new Set(flattened.filter(Boolean)));
   }
 
   function normalizeLoadedHideoutUpgrades(upgrades) {
@@ -530,7 +581,7 @@
 
   function getAppliedQuantityForUsage(itemId, usage) {
     if (usage.type === "quest" && usage.questId) {
-      const questState = state.progress.questProgress[usage.questId];
+      const questState = getQuestProgressState(usage.questId);
       return Number(questState && questState.appliedItems && questState.appliedItems[itemId]) || 0;
     }
 
@@ -603,7 +654,7 @@
       elements.questCardsGrid.appendChild(createQuestCard(quest));
     });
 
-    const completedCount = state.quests.filter((quest) => isQuestCompleted(quest.id)).length;
+    const completedCount = state.quests.filter((quest) => isQuestCompleted(quest)).length;
     elements.questVisibleCount.textContent = `${visibleQuests.length} ${visibleQuests.length === 1 ? "quest exibida" : "quests exibidas"}`;
     elements.questProgressSummary.textContent = `${completedCount} de ${state.quests.length} completas`;
     elements.questEmptyState.hidden = visibleQuests.length > 0;
@@ -818,7 +869,7 @@
   }
 
   function matchesQuestView(quest) {
-    const completed = isQuestCompleted(quest.id);
+    const completed = isQuestCompleted(quest);
     const searchTarget = [
       quest.name,
       quest.trader,
@@ -972,7 +1023,7 @@
   }
 
   function createQuestCard(quest) {
-    const completed = isQuestCompleted(quest.id);
+    const completed = isQuestCompleted(quest);
     const card = document.createElement("article");
 
     card.className = `quest-card ${completed ? "complete" : "pending"}`;
@@ -1087,8 +1138,8 @@
     `;
   }
 
-  function isQuestCompleted(questId) {
-    return Boolean(state.progress.questProgress[questId] && state.progress.questProgress[questId].completed);
+  function isQuestCompleted(questOrId) {
+    return Boolean(getQuestProgressState(questOrId));
   }
 
   function isHideoutCompleted(upgradeId) {
@@ -1096,8 +1147,12 @@
   }
 
   function toggleQuestCompletion(quest, options = {}) {
-    if (isQuestCompleted(quest.id)) {
-      delete state.progress.questProgress[quest.id];
+    const questIds = getQuestProgressIds(quest);
+
+    if (isQuestCompleted(quest)) {
+      questIds.forEach((questId) => {
+        delete state.progress.questProgress[questId];
+      });
     } else {
       state.progress.questProgress[quest.id] = {
         completed: true,
@@ -1108,6 +1163,30 @@
     saveProgress();
     if (options.render === false) return;
     render();
+  }
+
+  function getQuestProgressState(questOrId) {
+    const questIds = getQuestProgressIds(questOrId);
+    const questProgress = state.progress.questProgress || {};
+
+    for (const questId of questIds) {
+      const questState = questProgress[questId];
+      if (questState && questState.completed) return questState;
+    }
+
+    return null;
+  }
+
+  function getQuestProgressIds(questOrId) {
+    if (!questOrId) return [];
+
+    if (typeof questOrId === "object") {
+      return getUniqueIds([questOrId.id].concat(questOrId.questIds || []));
+    }
+
+    const questId = String(questOrId);
+    const matchingQuest = state.quests.find((quest) => getUniqueIds([quest.id].concat(quest.questIds || [])).includes(questId));
+    return matchingQuest ? getQuestProgressIds(matchingQuest) : [questId];
   }
 
   function toggleHideoutCompletion(upgrade) {

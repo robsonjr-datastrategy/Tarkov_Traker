@@ -80,7 +80,8 @@ a {
 }
 
 .app-header,
-.app-shell {
+.app-shell,
+.app-footer {
   position: relative;
   z-index: 1;
   width: min(1240px, calc(100% - 32px));
@@ -93,6 +94,22 @@ a {
   align-items: flex-end;
   gap: 24px;
   padding: 32px 0 20px;
+}
+
+.app-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 34px;
+  padding: 20px 0 28px;
+  border-top: 1px solid rgba(111, 115, 95, 0.32);
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.app-footer span:first-child {
+  color: var(--text);
+  font-weight: 700;
 }
 
 .eyebrow {
@@ -906,8 +923,13 @@ h1 {
 
 @media (max-width: 620px) {
   .app-header,
-  .app-shell {
+  .app-shell,
+  .app-footer {
     width: min(100% - 20px, 1240px);
+  }
+
+  .app-footer {
+    flex-direction: column;
   }
 
   .summary-grid,
