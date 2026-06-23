@@ -1,7 +1,7 @@
 (function () {
   const STORAGE_KEY = "tarkovFirTrackerProgress";
   const BASE_CACHE_KEY = "tarkovFirTrackerBase";
-  const BASE_DATA_VERSION = 7;
+  const BASE_DATA_VERSION = 8;
 
   const state = {
     items: [],
